@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   Activity,
   AudioLines,
@@ -102,7 +102,7 @@ function tick(s: State): State {
   if (readings.leak && !s.readings.leak) log = addLog(log, "Water leak detected — Bathroom", "alert");
   if (readings.door && !s.readings.door) log = addLog(log, "Front door opened", "alert");
 
-  const history = [...s.history, { t: now().slice(0, 5 + 3), temperature: readings.temperature, humidity: readings.humidity }].slice(-40);
+  const history = [...s.history, { t: now(), temperature: readings.temperature, humidity: readings.humidity }].slice(-40);
   return { ...s, readings, fan, light, log, history };
 }
 
@@ -328,7 +328,7 @@ function Stat({ label, value, tone = "ok" }: { label: string; value: string; ton
   );
 }
 
-function SectionTitle({ title, meta }: { title: string; meta: React.ReactNode }) {
+function SectionTitle({ title, meta }: { title: string; meta: ReactNode }) {
   return (
     <div className="flex items-center justify-between">
       <h2 className="text-lg font-semibold">{title}</h2>

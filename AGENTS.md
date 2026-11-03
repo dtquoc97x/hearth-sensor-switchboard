@@ -8,3 +8,6 @@
 > Commits you push to the connected branch sync back to Lovable and show up in
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
+
+## Project rules
+- Sensor simulation and relay automation rules live in `src/lib/iot.ts` as pure functions — keeps rules unit-testable and swappable for real device data later.
