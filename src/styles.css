@@ -54,53 +54,53 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
-/* Graphite control-panel theme with a lime "signal" accent */
+/* Light control-panel theme with a green "signal" accent */
 :root {
   --radius: 1rem;
-  --background: oklch(0.16 0.008 250);
-  --foreground: oklch(0.95 0.005 100);
-  --surface: oklch(0.2 0.01 250);
-  --card: oklch(0.21 0.01 250);
-  --card-foreground: oklch(0.95 0.005 100);
-  --popover: oklch(0.22 0.01 250);
-  --popover-foreground: oklch(0.95 0.005 100);
-  --primary: oklch(0.89 0.2 128);
-  --primary-foreground: oklch(0.18 0.03 130);
-  --signal: oklch(0.89 0.2 128);
-  --cool: oklch(0.78 0.12 220);
-  --secondary: oklch(0.27 0.01 250);
-  --secondary-foreground: oklch(0.95 0.005 100);
-  --muted: oklch(0.25 0.01 250);
-  --muted-foreground: oklch(0.66 0.012 250);
-  --accent: oklch(0.28 0.012 250);
-  --accent-foreground: oklch(0.95 0.005 100);
-  --warning: oklch(0.8 0.16 70);
+  --background: oklch(0.97 0.004 250);
+  --foreground: oklch(0.2 0.015 250);
+  --surface: oklch(0.95 0.006 250);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.2 0.015 250);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.2 0.015 250);
+  --primary: oklch(0.62 0.17 135);
+  --primary-foreground: oklch(0.99 0.01 130);
+  --signal: oklch(0.62 0.17 135);
+  --cool: oklch(0.58 0.13 230);
+  --secondary: oklch(0.94 0.006 250);
+  --secondary-foreground: oklch(0.2 0.015 250);
+  --muted: oklch(0.93 0.006 250);
+  --muted-foreground: oklch(0.5 0.015 250);
+  --accent: oklch(0.93 0.008 250);
+  --accent-foreground: oklch(0.2 0.015 250);
+  --warning: oklch(0.7 0.16 65);
   --warning-foreground: oklch(0.2 0.04 70);
-  --destructive: oklch(0.65 0.22 25);
+  --destructive: oklch(0.58 0.22 25);
   --destructive-foreground: oklch(0.98 0 0);
-  --border: oklch(0.29 0.01 250);
-  --input: oklch(0.3 0.01 250);
-  --ring: oklch(0.89 0.2 128 / 60%);
-  --chart-1: oklch(0.89 0.2 128);
-  --chart-2: oklch(0.78 0.12 220);
-  --chart-3: oklch(0.8 0.16 70);
-  --chart-4: oklch(0.7 0.15 320);
-  --chart-5: oklch(0.65 0.22 25);
-  --sidebar: oklch(0.18 0.01 250);
-  --sidebar-foreground: oklch(0.95 0.005 100);
-  --sidebar-primary: oklch(0.89 0.2 128);
-  --sidebar-primary-foreground: oklch(0.18 0.03 130);
-  --sidebar-accent: oklch(0.27 0.01 250);
-  --sidebar-accent-foreground: oklch(0.95 0.005 100);
-  --sidebar-border: oklch(0.29 0.01 250);
-  --sidebar-ring: oklch(0.89 0.2 128 / 60%);
+  --border: oklch(0.89 0.008 250);
+  --input: oklch(0.88 0.008 250);
+  --ring: oklch(0.62 0.17 135 / 50%);
+  --chart-1: oklch(0.62 0.17 135);
+  --chart-2: oklch(0.58 0.13 230);
+  --chart-3: oklch(0.7 0.16 65);
+  --chart-4: oklch(0.55 0.15 320);
+  --chart-5: oklch(0.58 0.22 25);
+  --sidebar: oklch(0.98 0.004 250);
+  --sidebar-foreground: oklch(0.2 0.015 250);
+  --sidebar-primary: oklch(0.62 0.17 135);
+  --sidebar-primary-foreground: oklch(0.99 0.01 130);
+  --sidebar-accent: oklch(0.94 0.006 250);
+  --sidebar-accent-foreground: oklch(0.2 0.015 250);
+  --sidebar-border: oklch(0.89 0.008 250);
+  --sidebar-ring: oklch(0.62 0.17 135 / 50%);
 
-  --gradient-panel: linear-gradient(160deg, oklch(0.23 0.012 250), oklch(0.19 0.009 250));
-  --gradient-on: radial-gradient(120% 90% at 100% 0%, oklch(0.89 0.2 128 / 22%), transparent 60%);
-  --gradient-grid: linear-gradient(oklch(1 0 0 / 3%) 1px, transparent 1px),
-    linear-gradient(90deg, oklch(1 0 0 / 3%) 1px, transparent 1px);
-  --shadow-glow: 0 0 0 1px oklch(0.89 0.2 128 / 40%), 0 20px 60px -20px oklch(0.89 0.2 128 / 45%);
-  --shadow-panel: 0 1px 0 oklch(1 0 0 / 5%) inset, 0 20px 40px -24px oklch(0 0 0 / 70%);
+  --gradient-panel: linear-gradient(160deg, oklch(1 0 0), oklch(0.98 0.004 250));
+  --gradient-on: radial-gradient(120% 90% at 100% 0%, oklch(0.85 0.18 130 / 25%), transparent 60%);
+  --gradient-grid: linear-gradient(oklch(0 0 0 / 4%) 1px, transparent 1px),
+    linear-gradient(90deg, oklch(0 0 0 / 4%) 1px, transparent 1px);
+  --shadow-glow: 0 0 0 1px oklch(0.62 0.17 135 / 40%), 0 20px 50px -20px oklch(0.62 0.17 135 / 35%);
+  --shadow-panel: 0 1px 0 oklch(1 0 0) inset, 0 16px 32px -24px oklch(0.3 0.02 250 / 25%);
 }
 
 @layer base {
