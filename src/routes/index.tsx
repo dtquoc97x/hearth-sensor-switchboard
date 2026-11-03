@@ -199,7 +199,7 @@ function Dashboard() {
               max={34}
               step={0.5}
               value={[s.fanThreshold]}
-              onValueChange={([v]) => setS((p) => ({ ...p, fanThreshold: v }))}
+              onValueChange={([v]) => setS((p) => ({ ...p, fanThreshold: v ?? p.fanThreshold }))}
             />
           </div>
         </RelayCard>
@@ -228,7 +228,7 @@ function Dashboard() {
               <span className="font-medium">Brightness</span>
               <span className="readout text-muted-foreground">{s.light.level}%</span>
             </div>
-            <Slider min={5} max={100} step={5} value={[s.light.level]} onValueChange={([v]) => setLight({ level: v })} />
+            <Slider min={5} max={100} step={5} value={[s.light.level]} onValueChange={([v]) => setLight({ level: v ?? s.light.level })} />
           </div>
           <div className="flex flex-col gap-3">
             <div className="flex justify-between text-sm">
@@ -240,7 +240,7 @@ function Dashboard() {
               max={400}
               step={10}
               value={[s.luxThreshold]}
-              onValueChange={([v]) => setS((p) => ({ ...p, luxThreshold: v }))}
+              onValueChange={([v]) => setS((p) => ({ ...p, luxThreshold: v ?? p.luxThreshold }))}
             />
           </div>
         </RelayCard>
