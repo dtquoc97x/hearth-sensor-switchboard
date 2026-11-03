@@ -1,0 +1,79 @@
+export type Readings = {
+  temperature: number; // °C
+  humidity: number; // %
+  co2: number; // ppm
+  pm25: number; // µg/m³
+  lux: number; // lx
+  noise: number; // dB
+  pressure: number; // hPa
+  power: number; // W
+  motion: boolean;
+  door: boolean; // true = open
+  smoke: boolean;
+  leak: boolean;
+};
+
+export type Relay = {
+  on: boolean;
+  auto: boolean;
+  level: number; // fan speed 1-3, light brightness 0-100
+};
+
+export const FAN_WATTS_PER_SPEED = 18;
+export const LIGHT_MAX_WATTS = 12;
+export const BASE_LOAD_WATTS = 85;
+
+export const initialReadings: Readings = {
+  temperature: 27.4,
+  humidity: 58,
+  co2: 640,
+  pm25: 12,
+  lux: 220,
+  noise: 38,
+  pressure: 1009,
+  power: 140,
+  motion: false,
+  door: false,
+  smoke: false,
+  leak: false,
+};
+
+/** Fan auto rule: turn on at/above threshold, turn off once 1 °C below it (hysteresis). */
+export function autoFanState(currentlyOn: boolean, temperature: number, threshold: number): boolean {
+  if (temperature >= threshold) return true;
+  if (temperature < threshold - 1) return false;
+  return currentlyOn;
+}
+
+/** Light auto rule: on when motion is detected and the room is darker than the lux threshold. */
+export function autoLightState(motion: boolean, lux: number, luxThreshold: number): boolean {
+  return motion && lux < luxThreshold;
+}
+
+export function powerDraw(fan: Relay, light: Relay): number {
+  const fanW = fan.on ? fan.level * FAN_WATTS_PER_SPEED : 0;
+  const lightW = light.on ? (light.level / 100) * LIGHT_MAX_WATTS : 0;
+  return BASE_LOAD_WATTS + fanW + lightW;
+}
+
+const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
+const drift = (v: number, step: number) => v + (Math.random() - 0.5) * step;
+
+export function nextReadings(prev: Readings, fan: Relay, light: Relay): Readings {
+  const cooling = fan.on ? fan.level * 0.06 : -0.04;
+  const ambientLux = clamp(drift(prev.lux - (light.on ? (light.level / 100) * 300 : 0), 40), 10, 600);
+  return {
+    temperature: +clamp(drift(prev.temperature, 0.35) - cooling, 22, 34).toFixed(1),
+    humidity: Math.round(clamp(drift(prev.humidity, 2) - (fan.on ? 0.15 : 0), 30, 85)),
+    co2: Math.round(clamp(drift(prev.co2, 40) - (fan.on ? 4 : -2), 400, 1600)),
+    pm25: Math.round(clamp(drift(prev.pm25, 3), 2, 80)),
+    lux: Math.round(ambientLux + (light.on ? (light.level / 100) * 300 : 0)),
+    noise: Math.round(clamp(drift(prev.noise, 6) + (fan.on ? 0.4 : -0.4), 28, 75)),
+    pressure: Math.round(clamp(drift(prev.pressure, 1.2), 995, 1025)),
+    power: Math.round(powerDraw(fan, light) + (Math.random() - 0.5) * 6),
+    motion: Math.random() < (prev.motion ? 0.7 : 0.18),
+    door: Math.random() < (prev.door ? 0.6 : 0.05),
+    smoke: false,
+    leak: Math.random() < (prev.leak ? 0.8 : 0.005),
+  };
+}
