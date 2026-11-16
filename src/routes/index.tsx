@@ -279,7 +279,7 @@ function Dashboard() {
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext items={visible.map((m) => m.id)} strategy={rectSortingStrategy}>
-          <div className={cn("grid grid-flow-dense grid-cols-2 gap-4 md:grid-cols-4 md:gap-6", editing && "gap-y-8 md:gap-y-10 pt-2")}>
+          <div className={cn("grid grid-flow-dense items-start grid-cols-2 gap-4 md:grid-cols-4 md:gap-6", editing && "gap-y-8 md:gap-y-10 pt-2")}>
             {visible.map((m) => (
               <ModuleShell key={m.id} id={m.id} title={moduleTitle(m)} editing={editing} span={span(m)}
                 onHide={() => setHidden(m.id, true)}
