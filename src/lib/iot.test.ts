@@ -27,6 +27,10 @@ describe("auto light rule", () => {
 
 describe("power draw", () => {
   it("adds fan and light load to the base load", () => {
-    expect(powerDraw({ on: true, auto: false, level: 2 }, { on: true, auto: false, level: 50 })).toBe(85 + 36 + 6);
+    expect(powerDraw([{ on: true, auto: false, level: 2 }], [{ on: true, auto: false, level: 50 }])).toBe(85 + 36 + 6);
+  });
+  it("adds up every fan and light that is on", () => {
+    const off = { on: false, auto: false, level: 3 };
+    expect(powerDraw([{ on: true, auto: false, level: 1 }, { on: true, auto: false, level: 3 }, off], [off])).toBe(85 + 18 + 54);
   });
 });

@@ -50,18 +50,26 @@ export function autoLightState(motion: boolean, lux: number, luxThreshold: numbe
   return motion && lux < luxThreshold;
 }
 
-export function powerDraw(fan: Relay, light: Relay): number {
-  const fanW = fan.on ? fan.level * FAN_WATTS_PER_SPEED : 0;
-  const lightW = light.on ? (light.level / 100) * LIGHT_MAX_WATTS : 0;
-  return BASE_LOAD_WATTS + fanW + lightW;
+export const fanWatts = (fan: Relay) => (fan.on ? fan.level * FAN_WATTS_PER_SPEED : 0);
+export const lightWatts = (light: Relay) => (light.on ? (light.level / 100) * LIGHT_MAX_WATTS : 0);
+/** Lux a light adds to the room when on. */
+export const lightLux = (light: Relay) => (light.on ? (light.level / 100) * 300 : 0);
+
+export function powerDraw(fans: Relay[], lights: Relay[]): number {
+  return BASE_LOAD_WATTS + fans.reduce((a, f) => a + fanWatts(f), 0) + lights.reduce((a, l) => a + lightWatts(l), 0);
 }
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 const drift = (v: number, step: number) => v + (Math.random() - 0.5) * step;
 
-export function nextReadings(prev: Readings, fan: Relay, light: Relay): Readings {
+export function nextReadings(prev: Readings, fans: Relay[], lights: Relay[]): Readings {
+  const fanLevel = fans.reduce((a, f) => a + (f.on ? f.level : 0), 0);
+  const addedLux = Math.min(600, lights.reduce((a, l) => a + lightLux(l), 0));
+  const fanOn = fanLevel > 0;
+  const fan = { on: fanOn, level: Math.min(fanLevel, 4) };
+  const light = { on: addedLux > 0, level: (addedLux / 300) * 100 };
   const cooling = fan.on ? fan.level * 0.06 : -0.04;
-  const ambientLux = clamp(drift(prev.lux - (light.on ? (light.level / 100) * 300 : 0), 40), 10, 600);
+  const ambientLux = clamp(drift(prev.lux - addedLux, 40), 10, 600);
   return {
     temperature: +clamp(drift(prev.temperature, 0.35) - cooling, 22, 34).toFixed(1),
     humidity: Math.round(clamp(drift(prev.humidity, 2) - (fan.on ? 0.15 : 0), 30, 85)),
@@ -70,7 +78,7 @@ export function nextReadings(prev: Readings, fan: Relay, light: Relay): Readings
     lux: Math.round(ambientLux + (light.on ? (light.level / 100) * 300 : 0)),
     noise: Math.round(clamp(drift(prev.noise, 6) + (fan.on ? 0.4 : -0.4), 28, 75)),
     pressure: Math.round(clamp(drift(prev.pressure, 1.2), 995, 1025)),
-    power: Math.round(powerDraw(fan, light) + (Math.random() - 0.5) * 6),
+    power: Math.round(powerDraw(fans, lights) + (Math.random() - 0.5) * 6),
     motion: Math.random() < (prev.motion ? 0.7 : 0.18),
     door: Math.random() < (prev.door ? 0.6 : 0.05),
     smoke: false,
