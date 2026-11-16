@@ -1,37 +1,24 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState, type ReactNode } from "react";
-import {
-  Activity,
-  AudioLines,
-  DoorOpen,
-  Droplets,
-  Fan,
-  Flame,
-  Gauge,
-  Lightbulb,
-  Sun,
-  Thermometer,
-  Waves,
-  Wind,
-  Zap,
-  Cloud,
-  Radio,
-} from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Check, Eye, Fan, LayoutGrid, Lightbulb, Radio, RotateCcw } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { SensorTile, type Status } from "@/components/dashboard/SensorTile";
+import { SensorTile } from "@/components/dashboard/SensorTile";
 import { RelayCard } from "@/components/dashboard/RelayCard";
+import { ModuleShell } from "@/components/dashboard/ModuleShell";
+import { AddDeviceDialog, type NewDevice } from "@/components/dashboard/AddDeviceDialog";
+import { SENSOR_META } from "@/components/dashboard/sensorMeta";
 import { cn } from "@/lib/utils";
+import { fanWatts, lightWatts, type Relay } from "@/lib/iot";
 import {
-  FAN_WATTS_PER_SPEED,
-  LIGHT_MAX_WATTS,
-  autoFanState,
-  autoLightState,
-  initialReadings,
-  nextReadings,
-  type Readings,
-  type Relay,
-} from "@/lib/iot";
+  BOOLEAN_SENSORS, addLog, clockNow, defaultModules, initialSim, moduleTitle, parseSavedModules, sensorOffset, tick,
+  type Module, type RelayModule, type SensorModule, type SimState,
+} from "@/lib/modules";
+
+const STORAGE_KEY = "homebase.layout.v1";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -53,121 +40,98 @@ export const Route = createFileRoute("/")({
   component: Dashboard,
 });
 
-type LogEntry = { id: number; time: string; text: string; tone: "on" | "off" | "alert" };
-type Point = { t: string; temperature: number; humidity: number };
-
-type State = {
-  readings: Readings;
-  fan: Relay;
-  light: Relay;
-  fanThreshold: number;
-  luxThreshold: number;
-  history: Point[];
-  log: LogEntry[];
-};
-
-const initialState: State = {
-  readings: initialReadings,
-  fan: { on: false, auto: true, level: 2 },
-  light: { on: false, auto: false, level: 70 },
-  fanThreshold: 28,
-  luxThreshold: 150,
-  history: [],
-  log: [],
-};
-
-let logId = 0;
-const now = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-const addLog = (log: LogEntry[], text: string, tone: LogEntry["tone"]) =>
-  [{ id: ++logId, time: now(), text, tone }, ...log].slice(0, 30);
-
-function tick(s: State): State {
-  const readings = nextReadings(s.readings, s.fan, s.light);
-  let { fan, light, log } = s;
-
-  if (fan.auto) {
-    const on = autoFanState(fan.on, readings.temperature, s.fanThreshold);
-    if (on !== fan.on) {
-      fan = { ...fan, on };
-      log = addLog(log, `Fan auto ${on ? "on" : "off"} at ${readings.temperature} °C`, on ? "on" : "off");
-    }
-  }
-  if (light.auto) {
-    const on = autoLightState(readings.motion, readings.lux - (light.on ? (light.level / 100) * 300 : 0), s.luxThreshold);
-    if (on !== light.on) {
-      light = { ...light, on };
-      log = addLog(log, `Light auto ${on ? "on" : "off"} (${on ? "motion in the dark" : "no motion / bright"})`, on ? "on" : "off");
-    }
-  }
-  if (readings.leak && !s.readings.leak) log = addLog(log, "Water leak detected — Bathroom", "alert");
-  if (readings.door && !s.readings.door) log = addLog(log, "Front door opened", "alert");
-
-  const history = [...s.history, { t: now(), temperature: readings.temperature, humidity: readings.humidity }].slice(-40);
-  return { ...s, readings, fan, light, log, history };
-}
-
 function Dashboard() {
-  const [s, setS] = useState<State>(initialState);
+  const [s, setS] = useState<SimState>(initialSim);
   const [clock, setClock] = useState("");
+  const [editing, setEditing] = useState(false);
+  const loaded = useRef(false);
 
   useEffect(() => {
-    setS((p) => ({ ...p, log: addLog(p.log, "Hub connected · 12 sensors online", "on") }));
+    const saved = parseSavedModules(localStorage.getItem(STORAGE_KEY));
+    loaded.current = true;
+    setS((p) => ({ ...p, modules: saved ?? p.modules, log: addLog(p.log, "Hub connected", "on") }));
     const id = setInterval(() => {
       setS(tick);
-      setClock(now());
+      setClock(clockNow());
     }, 2000);
-    setClock(now());
+    setClock(clockNow());
     return () => clearInterval(id);
   }, []);
 
+  useEffect(() => {
+    if (loaded.current) localStorage.setItem(STORAGE_KEY, JSON.stringify(s.modules));
+  }, [s.modules]);
+
+  const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const r = s.readings;
+  const visible = s.modules.filter((m) => !m.hidden);
+  const hidden = s.modules.filter((m) => m.hidden);
+  const fanThreshold = (s.modules.find((m) => m.type === "fan") as RelayModule | undefined)?.threshold ?? 28;
+  const luxThreshold = (s.modules.find((m) => m.type === "light") as RelayModule | undefined)?.threshold ?? 150;
+  const alerts = s.modules.filter((m) => m.type === "sensor" && ["door", "smoke", "leak"].includes(m.kind) && s.flags[m.id]).length;
+  const online = s.modules.filter((m) => m.type !== "chart" && m.type !== "activity").length;
 
-  const setFan = (patch: Partial<Relay>, msg?: string) =>
-    setS((p) => ({ ...p, fan: { ...p.fan, ...patch }, log: msg ? addLog(p.log, msg, patch.on === false ? "off" : "on") : p.log }));
-  const setLight = (patch: Partial<Relay>, msg?: string) =>
-    setS((p) => ({ ...p, light: { ...p.light, ...patch }, log: msg ? addLog(p.log, msg, patch.on === false ? "off" : "on") : p.log }));
+  const update = (id: string, fn: (m: Module) => Module, msg?: [string, "on" | "off" | "alert"]) =>
+    setS((p) => ({ ...p, modules: p.modules.map((m) => (m.id === id ? fn(m) : m)), log: msg ? addLog(p.log, ...msg) : p.log }));
+  const setRelay = (m: RelayModule, patch: Partial<Relay>, msg?: string) =>
+    update(m.id, (x) => ({ ...(x as RelayModule), relay: { ...(x as RelayModule).relay, ...patch } }), msg ? [msg, patch.on === false ? "off" : "on"] : undefined);
+  const setHidden = (id: string, value: boolean) => update(id, (m) => ({ ...m, hidden: value }));
+  const remove = (m: Module) => setS((p) => ({ ...p, modules: p.modules.filter((x) => x.id !== m.id), log: addLog(p.log, `${moduleTitle(m)} removed`, "off") }));
 
-  const tempStatus: Status = r.temperature >= 31 ? "alert" : r.temperature >= s.fanThreshold ? "warn" : "ok";
-  const co2Status: Status = r.co2 >= 1200 ? "alert" : r.co2 >= 900 ? "warn" : "ok";
-  const pmStatus: Status = r.pm25 >= 35 ? "alert" : r.pm25 >= 15 ? "warn" : "ok";
-  const humStatus: Status = r.humidity > 70 || r.humidity < 35 ? "warn" : "ok";
-  const alerts = [r.leak, r.smoke, r.door].filter(Boolean).length;
+  const addDevice = (d: NewDevice) => {
+    const id = `${d.kind}-${crypto.randomUUID().slice(0, 8)}`;
+    const m: Module =
+      d.kind === "fan" || d.kind === "light"
+        ? { id, type: d.kind, name: d.name, room: d.room, hidden: false, threshold: d.kind === "fan" ? 28 : 150, relay: { on: false, auto: false, level: d.kind === "fan" ? 2 : 70 } }
+        : { id, type: "sensor", kind: d.kind, name: d.name, room: d.room, hidden: false };
+    setS((p) => ({ ...p, modules: [...p.modules, m], log: addLog(p.log, `${d.name} added · ${d.room}`, "on") }));
+  };
 
-  const fanWatts = s.fan.on ? s.fan.level * FAN_WATTS_PER_SPEED : 0;
-  const lightWatts = s.light.on ? (s.light.level / 100) * LIGHT_MAX_WATTS : 0;
+  const onDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) return;
+    setS((p) => {
+      const from = p.modules.findIndex((m) => m.id === active.id);
+      const to = p.modules.findIndex((m) => m.id === over.id);
+      return { ...p, modules: arrayMove(p.modules, from, to) };
+    });
+  };
 
-  return (
-    <main className="mx-auto flex min-h-screen max-w-7xl flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
-      {/* Header */}
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span className="size-2 rounded-full bg-signal animate-pulse-dot" />
-            <span className="readout">HUB-01 · live</span>
-          </div>
-          <h1 className="mt-2 text-4xl font-bold tracking-tight md:text-5xl">Homebase</h1>
-        </div>
-        <div className="flex flex-wrap gap-3">
-          <Stat label="Local time" value={clock || "--:--:--"} />
-          <Stat label="Total load" value={`${r.power} W`} />
-          <Stat label="Alerts" value={String(alerts)} tone={alerts ? "alert" : "ok"} />
-        </div>
-      </header>
+  const sensorValue = (m: SensorModule): number | boolean => {
+    if (BOOLEAN_SENSORS.includes(m.kind)) return !!s.flags[m.id];
+    return (r[m.kind] as number) + sensorOffset(m.id, m.kind);
+  };
 
-      {/* Relays */}
-      <div className="grid gap-6 lg:grid-cols-2">
+  const renderModule = (m: Module): ReactNode => {
+    if (m.type === "sensor") {
+      const meta = SENSOR_META[m.kind];
+      const v = sensorValue(m);
+      const ctx = { fanThreshold, luxThreshold };
+      return (
+        <SensorTile
+          icon={meta.icon}
+          label={m.name}
+          value={meta.format(v)}
+          unit={meta.unit}
+          status={meta.status?.(v, ctx) ?? "ok"}
+          progress={typeof v === "number" ? meta.progress?.(v) : undefined}
+          hint={meta.hint ? `${meta.hint(v, ctx)} · ${m.room}` : m.room}
+        />
+      );
+    }
+    if (m.type === "fan") {
+      return (
         <RelayCard
-          title="Ceiling Fan"
-          channel="Relay CH1 · Living room"
-          relay={s.fan}
-          watts={fanWatts}
-          autoLabel={`Runs when temperature reaches ${s.fanThreshold} °C`}
-          onToggle={() => setFan({ on: !s.fan.on }, `Fan switched ${s.fan.on ? "off" : "on"} manually`)}
-          onAutoChange={(auto) => setFan({ auto }, `Fan auto mode ${auto ? "enabled" : "disabled"}`)}
+          title={m.name}
+          channel={`Relay · ${m.room}`}
+          relay={m.relay}
+          watts={fanWatts(m.relay)}
+          autoLabel={`Runs when temperature reaches ${m.threshold} °C`}
+          onToggle={() => setRelay(m, { on: !m.relay.on }, `${m.name} switched ${m.relay.on ? "off" : "on"} manually`)}
+          onAutoChange={(auto) => setRelay(m, { auto }, `${m.name} auto mode ${auto ? "enabled" : "disabled"}`)}
           visual={
             <Fan
-              className={cn("size-16", s.fan.on ? "animate-fan text-signal" : "text-muted-foreground")}
-              style={{ ["--fan-duration" as string]: `${1.4 / s.fan.level}s` }}
+              className={cn("size-16", m.relay.on ? "animate-fan text-signal" : "text-muted-foreground")}
+              style={{ ["--fan-duration" as string]: `${1.4 / m.relay.level}s` }}
             />
           }
         >
@@ -178,10 +142,10 @@ function Dashboard() {
                 <button
                   key={lvl}
                   type="button"
-                  onClick={() => setFan({ level: lvl })}
+                  onClick={() => setRelay(m, { level: lvl })}
                   className={cn(
                     "readout rounded-lg border py-2 text-sm transition-colors",
-                    s.fan.level === lvl ? "border-signal bg-signal/10 text-signal" : "text-muted-foreground hover:text-foreground",
+                    m.relay.level === lvl ? "border-signal bg-signal/10 text-signal" : "text-muted-foreground hover:text-foreground",
                   )}
                 >
                   {["Low", "Mid", "High"][lvl - 1]}
@@ -189,85 +153,37 @@ function Dashboard() {
               ))}
             </div>
           </div>
-          <div className="flex flex-col gap-3">
-            <div className="flex justify-between text-sm">
-              <span className="font-medium">Auto threshold</span>
-              <span className="readout text-muted-foreground">{s.fanThreshold} °C</span>
-            </div>
-            <Slider
-              min={22}
-              max={34}
-              step={0.5}
-              value={[s.fanThreshold]}
-              onValueChange={([v]) => setS((p) => ({ ...p, fanThreshold: v ?? p.fanThreshold }))}
-            />
-          </div>
+          <ThresholdSlider label="Auto threshold" unit="°C" min={22} max={34} step={0.5} value={m.threshold}
+            onChange={(v) => update(m.id, (x) => ({ ...(x as RelayModule), threshold: v }))} />
         </RelayCard>
-
+      );
+    }
+    if (m.type === "light") {
+      return (
         <RelayCard
-          title="Main Light"
-          channel="Relay CH2 · Living room"
-          relay={s.light}
-          watts={lightWatts}
-          autoLabel={`Turns on with motion when darker than ${s.luxThreshold} lx`}
-          onToggle={() => setLight({ on: !s.light.on }, `Light switched ${s.light.on ? "off" : "on"} manually`)}
-          onAutoChange={(auto) => setLight({ auto }, `Light auto mode ${auto ? "enabled" : "disabled"}`)}
+          title={m.name}
+          channel={`Relay · ${m.room}`}
+          relay={m.relay}
+          watts={lightWatts(m.relay)}
+          autoLabel={`Turns on with motion when darker than ${m.threshold} lx`}
+          onToggle={() => setRelay(m, { on: !m.relay.on }, `${m.name} switched ${m.relay.on ? "off" : "on"} manually`)}
+          onAutoChange={(auto) => setRelay(m, { auto }, `${m.name} auto mode ${auto ? "enabled" : "disabled"}`)}
           visual={
             <Lightbulb
-              className={cn("size-16 transition-all duration-500", s.light.on ? "text-warning" : "text-muted-foreground")}
-              style={
-                s.light.on
-                  ? { filter: `drop-shadow(0 0 ${8 + s.light.level / 4}px var(--warning))`, opacity: 0.4 + s.light.level / 170 }
-                  : undefined
-              }
+              className={cn("size-16 transition-all duration-500", m.relay.on ? "text-warning" : "text-muted-foreground")}
+              style={m.relay.on ? { filter: `drop-shadow(0 0 ${8 + m.relay.level / 4}px var(--warning))`, opacity: 0.4 + m.relay.level / 170 } : undefined}
             />
           }
         >
-          <div className="flex flex-col gap-3">
-            <div className="flex justify-between text-sm">
-              <span className="font-medium">Brightness</span>
-              <span className="readout text-muted-foreground">{s.light.level}%</span>
-            </div>
-            <Slider min={5} max={100} step={5} value={[s.light.level]} onValueChange={([v]) => setLight({ level: v ?? s.light.level })} />
-          </div>
-          <div className="flex flex-col gap-3">
-            <div className="flex justify-between text-sm">
-              <span className="font-medium">Darkness threshold</span>
-              <span className="readout text-muted-foreground">{s.luxThreshold} lx</span>
-            </div>
-            <Slider
-              min={20}
-              max={400}
-              step={10}
-              value={[s.luxThreshold]}
-              onValueChange={([v]) => setS((p) => ({ ...p, luxThreshold: v ?? p.luxThreshold }))}
-            />
-          </div>
+          <ThresholdSlider label="Brightness" unit="%" min={5} max={100} step={5} value={m.relay.level} onChange={(v) => setRelay(m, { level: v })} />
+          <ThresholdSlider label="Darkness threshold" unit="lx" min={20} max={400} step={10} value={m.threshold}
+            onChange={(v) => update(m.id, (x) => ({ ...(x as RelayModule), threshold: v }))} />
         </RelayCard>
-      </div>
-
-      {/* Sensors */}
-      <section className="flex flex-col gap-4">
-        <SectionTitle title="Sensors" meta="12 online · refresh 2s" />
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
-          <SensorTile icon={Thermometer} label="Temperature" value={r.temperature.toFixed(1)} unit="°C" status={tempStatus} progress={(r.temperature - 18) / 18} hint="Living room" />
-          <SensorTile icon={Droplets} label="Humidity" value={String(r.humidity)} unit="%" status={humStatus} progress={r.humidity / 100} hint="Comfort 40–60%" />
-          <SensorTile icon={Cloud} label="CO₂" value={String(r.co2)} unit="ppm" status={co2Status} progress={r.co2 / 1600} hint={co2Status === "ok" ? "Fresh air" : "Ventilate soon"} />
-          <SensorTile icon={Wind} label="PM2.5" value={String(r.pm25)} unit="µg/m³" status={pmStatus} progress={r.pm25 / 80} hint="Air quality" />
-          <SensorTile icon={Sun} label="Light level" value={String(r.lux)} unit="lx" progress={r.lux / 900} hint={r.lux < s.luxThreshold ? "Dark" : "Bright"} />
-          <SensorTile icon={AudioLines} label="Noise" value={String(r.noise)} unit="dB" status={r.noise > 65 ? "warn" : "ok"} progress={r.noise / 90} hint="Ambient sound" />
-          <SensorTile icon={Gauge} label="Pressure" value={String(r.pressure)} unit="hPa" progress={(r.pressure - 980) / 60} hint="Barometric" />
-          <SensorTile icon={Zap} label="Energy" value={String(r.power)} unit="W" status={r.power > 180 ? "warn" : "ok"} progress={r.power / 250} hint={`≈ ${((r.power * 24) / 1000).toFixed(1)} kWh / day`} />
-          <SensorTile icon={Activity} label="Motion" value={r.motion ? "Detected" : "Clear"} status={r.motion ? "warn" : "ok"} hint="Hallway PIR" />
-          <SensorTile icon={DoorOpen} label="Front door" value={r.door ? "Open" : "Closed"} status={r.door ? "alert" : "ok"} hint="Contact sensor" />
-          <SensorTile icon={Flame} label="Smoke / Gas" value={r.smoke ? "Alarm" : "Normal"} status={r.smoke ? "alert" : "ok"} hint="Kitchen" />
-          <SensorTile icon={Waves} label="Water leak" value={r.leak ? "Leak!" : "Dry"} status={r.leak ? "alert" : "ok"} hint="Bathroom floor" />
-        </div>
-      </section>
-
-      {/* Chart + log */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        <section className="panel flex flex-col gap-4 p-6 lg:col-span-2">
+      );
+    }
+    if (m.type === "chart") {
+      return (
+        <section className="panel flex flex-col gap-4 p-6">
           <SectionTitle title="Climate trend" meta="last 80 seconds" />
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -295,27 +211,101 @@ function Dashboard() {
             </ResponsiveContainer>
           </div>
         </section>
+      );
+    }
+    return (
+      <section className="panel flex flex-col gap-4 p-6">
+        <SectionTitle title="Activity" meta={<Radio className="size-4" />} />
+        <ul className="flex max-h-64 flex-col gap-3 overflow-y-auto pr-1">
+          {s.log.length === 0 && <li className="text-sm text-muted-foreground">Waiting for events…</li>}
+          {s.log.map((e) => (
+            <li key={e.id} className="flex items-start gap-3 text-sm">
+              <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", e.tone === "on" ? "bg-signal" : e.tone === "alert" ? "bg-destructive" : "bg-muted-foreground")} />
+              <span className="flex-1">{e.text}</span>
+              <span className="readout text-xs text-muted-foreground">{e.time}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    );
+  };
 
-        <section className="panel flex flex-col gap-4 p-6">
-          <SectionTitle title="Activity" meta={<Radio className="size-4" />} />
-          <ul className="flex max-h-64 flex-col gap-3 overflow-y-auto pr-1">
-            {s.log.length === 0 && <li className="text-sm text-muted-foreground">Waiting for events…</li>}
-            {s.log.map((e) => (
-              <li key={e.id} className="flex items-start gap-3 text-sm">
-                <span
-                  className={cn(
-                    "mt-1.5 size-2 shrink-0 rounded-full",
-                    e.tone === "on" ? "bg-signal" : e.tone === "alert" ? "bg-destructive" : "bg-muted-foreground",
-                  )}
-                />
-                <span className="flex-1">{e.text}</span>
-                <span className="readout text-xs text-muted-foreground">{e.time}</span>
-              </li>
+  const span = (m: Module) => (m.type === "sensor" ? "col-span-1" : "col-span-2");
+
+  return (
+    <main className="mx-auto flex min-h-screen max-w-7xl flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <span className="size-2 rounded-full bg-signal animate-pulse-dot" />
+            <span className="readout">HUB-01 · live · {online} devices</span>
+          </div>
+          <h1 className="mt-2 text-4xl font-bold tracking-tight md:text-5xl">Homebase</h1>
+        </div>
+        <div className="flex flex-wrap items-end gap-3">
+          <Stat label="Local time" value={clock || "--:--:--"} />
+          <Stat label="Total load" value={`${r.power} W`} />
+          <Stat label="Alerts" value={String(alerts)} tone={alerts ? "alert" : "ok"} />
+          <Button variant={editing ? "default" : "outline"} onClick={() => setEditing((e) => !e)} className="h-auto self-stretch">
+            {editing ? <Check /> : <LayoutGrid />} {editing ? "Done" : "Customize"}
+          </Button>
+        </div>
+      </header>
+
+      {editing && (
+        <div className="panel flex flex-col gap-3 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground">Drag panels by their handle, hide the ones you don't need, or add new devices.</p>
+            <div className="flex gap-2">
+              <Button size="sm" variant="ghost" onClick={() => setS((p) => ({ ...p, modules: defaultModules() }))}>
+                <RotateCcw /> Reset layout
+              </Button>
+              <AddDeviceDialog onAdd={addDevice} />
+            </div>
+          </div>
+          {hidden.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+              <span className="text-xs text-muted-foreground">Hidden:</span>
+              {hidden.map((m) => (
+                <button key={m.id} type="button" onClick={() => setHidden(m.id, false)}
+                  className="flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs hover:border-signal hover:text-signal">
+                  <Eye className="size-3.5" /> {moduleTitle(m)}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+        <SortableContext items={visible.map((m) => m.id)} strategy={rectSortingStrategy}>
+          <div className={cn("grid grid-flow-dense grid-cols-2 gap-4 md:grid-cols-4 md:gap-6", editing && "gap-y-8 md:gap-y-10 pt-2")}>
+            {visible.map((m) => (
+              <ModuleShell key={m.id} id={m.id} title={moduleTitle(m)} editing={editing} span={span(m)}
+                onHide={() => setHidden(m.id, true)}
+                onRemove={m.type === "chart" || m.type === "activity" ? undefined : () => remove(m)}>
+                {renderModule(m)}
+              </ModuleShell>
             ))}
-          </ul>
-        </section>
-      </div>
+          </div>
+        </SortableContext>
+      </DndContext>
+      {visible.length === 0 && <p className="text-center text-sm text-muted-foreground">All panels are hidden. Open Customize to bring them back.</p>}
     </main>
+  );
+}
+
+function ThresholdSlider({ label, unit, min, max, step, value, onChange }: {
+  label: string; unit: string; min: number; max: number; step: number; value: number; onChange: (v: number) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex justify-between text-sm">
+        <span className="font-medium">{label}</span>
+        <span className="readout text-muted-foreground">{value} {unit}</span>
+      </div>
+      <Slider min={min} max={max} step={step} value={[value]} onValueChange={([v]) => v !== undefined && onChange(v)} />
+    </div>
   );
 }
 
