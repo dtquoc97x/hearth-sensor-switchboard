@@ -13,7 +13,7 @@ export type PanelModule = Base & { type: "chart" | "activity" };
 export type Module = RelayModule | SensorModule | PanelModule;
 
 export const moduleTitle = (m: Module): string =>
-  m.type === "chart" ? "Climate trend" : m.type === "activity" ? "Activity" : m.name;
+  m.type === "chart" ? "Climate trend" : "name" in m ? m.name : "Activity";
 
 const sensor = (id: string, kind: SensorKind, name: string, room: string): SensorModule => ({
   id, type: "sensor", kind, name, room, hidden: false,
