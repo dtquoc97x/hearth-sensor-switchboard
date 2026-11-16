@@ -12,7 +12,7 @@ export type SensorModule = Base & { type: "sensor"; kind: SensorKind; name: stri
 export type PanelModule = Base & { type: "chart" | "activity" };
 export type Module = RelayModule | SensorModule | PanelModule;
 
-export const moduleTitle = (m: Module) =>
+export const moduleTitle = (m: Module): string =>
   m.type === "chart" ? "Climate trend" : m.type === "activity" ? "Activity" : m.name;
 
 const sensor = (id: string, kind: SensorKind, name: string, room: string): SensorModule => ({
@@ -71,7 +71,7 @@ export function tick(s: SimState): SimState {
   const flags: Record<string, boolean> = {};
   for (const m of s.modules) {
     if (m.type !== "sensor" || !BOOLEAN_SENSORS.includes(m.kind)) continue;
-    const [start, stay] = flipChance[m.kind];
+    const [start, stay] = flipChance[m.kind] ?? [0, 0];
     const prev = !!s.flags[m.id];
     const next = Math.random() < (prev ? stay : start);
     flags[m.id] = next;

@@ -21,10 +21,10 @@ export function SensorTile({
   icon: LucideIcon;
   label: string;
   value: string;
-  unit?: string;
-  hint?: string;
+  unit?: string | undefined;
+  hint?: string | undefined;
   status?: Status;
-  progress?: number; // 0-1
+  progress?: number | undefined; // 0-1
 }) {
   return (
     <div className={cn("panel flex flex-col gap-3 p-4", status === "alert" && "border-destructive/60")}>

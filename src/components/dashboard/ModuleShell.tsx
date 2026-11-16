@@ -8,7 +8,7 @@ export function ModuleShell({
   id, title, editing, span, onHide, onRemove, children,
 }: {
   id: string; title: string; editing: boolean; span: string;
-  onHide: () => void; onRemove?: () => void; children: ReactNode;
+  onHide: () => void; onRemove?: (() => void) | undefined; children: ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled: !editing });
   return (
