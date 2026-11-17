@@ -111,11 +111,13 @@ function Dashboard() {
     });
   };
 
-  const sensorValue = (m: SensorModule): number | boolean => {
+  const sensorValue = (m: SensorModule): number | boolean | string => {
     if (m.source) {
-      const v = latestValue(deviceHub.log, m.source.uid, m.source.field) ?? 0;
-      return BOOLEAN_SENSORS.includes(m.kind) ? v !== 0 : v;
+      const v = latestValue(deviceHub.log, m.source.uid, m.source.field);
+      if (v === undefined) return m.kind === "custom" ? "no data" : 0;
+      return BOOLEAN_SENSORS.includes(m.kind) ? isTruthyField(v) : v;
     }
+    if (m.kind === "custom") return "no source";
     if (BOOLEAN_SENSORS.includes(m.kind)) return !!s.flags[m.id];
     return (r[m.kind] as number) + sensorOffset(m.id, m.kind);
   };
@@ -125,17 +127,20 @@ function Dashboard() {
       const meta = SENSOR_META[m.kind];
       const v = sensorValue(m);
       const ctx = { fanThreshold, luxThreshold };
+      // A device may send text ("online", "no data") — show it as it is instead of formatting it as a number.
+      const plain = typeof v === "string" && !isNumericText(v);
+      const num = v as number | boolean;
       return (
         <SensorTile
           icon={meta.icon}
           label={m.name}
-          value={meta.format(v)}
+          value={plain ? v : meta.format(num)}
           unit={meta.unit}
-          status={meta.status?.(v, ctx) ?? "ok"}
+          status={plain ? "ok" : meta.status?.(num, ctx) ?? "ok"}
           progress={typeof v === "number" ? meta.progress?.(v) : undefined}
           hint={m.source
             ? `${deviceHub.devices.find((d) => d.uid === m.source!.uid)?.name ?? `UID ${m.source.uid}`} · ${m.source.field}${latestValue(deviceHub.log, m.source.uid, m.source.field) === undefined ? " · no data" : ""}`
-            : meta.hint ? `${meta.hint(v, ctx)} · ${m.room}` : m.room}
+            : meta.hint ? `${meta.hint(num, ctx)} · ${m.room}` : m.room}
         />
       );
     }
