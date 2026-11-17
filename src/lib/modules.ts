@@ -2,7 +2,9 @@ import { autoFanState, autoLightState, lightLux, nextReadings, initialReadings, 
 
 export type SensorKind =
   | "temperature" | "humidity" | "co2" | "pm25" | "lux" | "noise"
-  | "pressure" | "power" | "motion" | "door" | "smoke" | "leak";
+  | "pressure" | "power" | "motion" | "door" | "smoke" | "leak"
+  /** A reading the hub has no built-in tile for: shown exactly as the device sends it. */
+  | "custom";
 
 export const BOOLEAN_SENSORS: SensorKind[] = ["motion", "door", "smoke", "leak"];
 

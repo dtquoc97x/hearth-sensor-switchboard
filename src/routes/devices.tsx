@@ -26,7 +26,7 @@ function DevicesPage() {
   const h = useDeviceHub();
   const [name, setName] = useState("");
   const [uid, setUid] = useState("");
-  const [raw, setRaw] = useState('{"Uid": 868225062598432, "Temperature": 25, "Humidity": 15, "ts": "2026-11-17T10:00:00"},\n{"Uid": 868225062598433, "Temperature": 25, "Humidity": 15}');
+  const [raw, setRaw] = useState('{"Uid": 868225062598433, "Light level": 3, "Humidity": 15, "Temperature": 26},\n{"Uid": 868225062598432, "Temperature": 25, "Humidity": 15, "ts": "2026-11-17T10:00:00"}');
   const [err, setErr] = useState("");
   const [filter, setFilter] = useState<number | "all">("all");
   const nameOf = (u: number) => h.devices.find((d) => d.uid === u)?.name ?? "Unknown device";
@@ -81,9 +81,13 @@ function DevicesPage() {
           <h2 className="text-lg font-semibold">Send test data</h2>
           <textarea value={raw} onChange={(e) => setRaw(e.target.value)} rows={6}
             className="readout rounded-md border bg-background p-3 text-sm" />
+          <p className="text-xs text-muted-foreground">
+            Any field names are accepted — only <span className="font-mono">Uid</span> is required.
+            Send one item, a JSON array, or several items separated by commas.
+          </p>
           <Button onClick={() => {
             const list = parseDevicePayloads(raw);
-            if (!list.length) return setErr('Each item needs a numeric "Uid", e.g. {"Uid": 123, "Temperature": 25}.');
+            if (!list.length) return setErr('Each item needs a numeric "Uid" plus at least one reading, e.g. {"Uid": 868225062598433, "Light level": 3}.');
             setErr(""); list.forEach(hub.pushPayload);
           }}><Send /> Send</Button>
         </section>

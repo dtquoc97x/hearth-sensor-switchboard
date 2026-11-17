@@ -7,13 +7,12 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SENSOR_META } from "./sensorMeta";
 import { fieldsFor, useDeviceHub } from "@/hooks/use-device-hub";
+import { guessField } from "@/lib/iot";
 import type { SensorKind, SensorSource } from "@/lib/modules";
 
 export type NewDevice = { kind: "fan" | "light" | SensorKind; name: string; room: string; source?: SensorSource | undefined };
 
 const SIM = "sim";
-const guessField = (kind: string, fields: string[]) =>
-  fields.find((f) => f.toLowerCase() === kind.toLowerCase()) ?? fields.find((f) => f.toLowerCase().startsWith(kind.slice(0, 4).toLowerCase())) ?? fields[0] ?? "";
 
 /** Add a new panel, or edit an existing one when `initial` is given (type is then fixed). */
 export function AddDeviceDialog({ onAdd, initial, open: openProp, onOpenChange, trigger }: {
@@ -36,8 +35,10 @@ export function AddDeviceDialog({ onAdd, initial, open: openProp, onOpenChange, 
   }, [open, initial]);
 
   const isSensor = kind !== "fan" && kind !== "light";
-  const defaultName = kind === "fan" ? "Fan" : kind === "light" ? "Light" : SENSOR_META[kind].label;
+  const isCustom = kind === "custom";
+  const defaultName = kind === "fan" ? "Fan" : kind === "light" ? "Light" : isCustom ? field.trim() || "Any field" : SENSOR_META[kind].label;
   const fields = srcUid === SIM ? [] : fieldsFor(hubState.log, Number(srcUid));
+  const canSubmit = !isCustom || field.trim() !== "";
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -50,6 +51,7 @@ export function AddDeviceDialog({ onAdd, initial, open: openProp, onOpenChange, 
           className="flex flex-col gap-4"
           onSubmit={(e) => {
             e.preventDefault();
+            if (!canSubmit) return;
             const source = isSensor && srcUid !== SIM && field.trim() ? { uid: Number(srcUid), field: field.trim() } : undefined;
             onAdd({ kind, name: name.trim() || defaultName, room: room.trim() || "Home", source });
             setOpen(false);
@@ -57,7 +59,12 @@ export function AddDeviceDialog({ onAdd, initial, open: openProp, onOpenChange, 
         >
           <div className="flex flex-col gap-2">
             <Label>Device type</Label>
-            <Select value={kind} onValueChange={(v) => setKind(v as NewDevice["kind"])} disabled={!!initial}>
+            <Select value={kind} onValueChange={(v) => {
+              const k = v as NewDevice["kind"];
+              setKind(k);
+              const first = hubState.devices[0];
+              if (k === "custom" && srcUid === SIM && first) setSrcUid(String(first.uid));
+            }} disabled={!!initial}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectGroup>
@@ -88,11 +95,11 @@ export function AddDeviceDialog({ onAdd, initial, open: openProp, onOpenChange, 
                 <Label>Data from</Label>
                 <Select value={srcUid} onValueChange={(v) => {
                   setSrcUid(v);
-                  if (v !== SIM) setField(guessField(kind, fieldsFor(hubState.log, Number(v))));
+                  if (v !== SIM && !isCustom) setField(guessField(kind, fieldsFor(hubState.log, Number(v))));
                 }}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={SIM}>Built-in simulation</SelectItem>
+                    {!isCustom && <SelectItem value={SIM}>Built-in simulation</SelectItem>}
                     {hubState.devices.map((d) => (
                       <SelectItem key={d.id} value={String(d.uid)}>{d.name} · {d.uid}</SelectItem>
                     ))}
@@ -102,14 +109,18 @@ export function AddDeviceDialog({ onAdd, initial, open: openProp, onOpenChange, 
               {srcUid !== SIM && (
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="dev-field">Data field</Label>
-                  <Input id="dev-field" list="dev-fields" value={field} onChange={(e) => setField(e.target.value)} placeholder="e.g. Temperature" />
+                  <Input id="dev-field" list="dev-fields" value={field} onChange={(e) => setField(e.target.value)}
+                    placeholder={isCustom ? "e.g. Light level" : "e.g. Temperature"} />
                   <datalist id="dev-fields">{fields.map((f) => <option key={f} value={f} />)}</datalist>
-                  {fields.length > 0 && <p className="text-xs text-muted-foreground">Reported so far: {fields.join(", ")}</p>}
+                  {fields.length > 0
+                    ? <p className="text-xs text-muted-foreground">Reported so far: {fields.join(", ")}</p>
+                    : <p className="text-xs text-muted-foreground">This device hasn't reported yet — type the field name it will send.</p>}
                 </div>
               )}
+              {isCustom && srcUid === SIM && <p className="text-xs text-muted-foreground">Pick a device to read this field from.</p>}
             </div>
           )}
-          <DialogFooter><Button type="submit">{initial ? "Save" : "Add"}</Button></DialogFooter>
+          <DialogFooter><Button type="submit" disabled={!canSubmit}>{initial ? "Save" : "Add"}</Button></DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

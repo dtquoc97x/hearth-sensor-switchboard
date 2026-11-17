@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { autoFanState, autoLightState, powerDraw } from "./iot";
+import { autoFanState, autoLightState, findFieldValue, guessField, isTruthyField, parseDevicePayloads, powerDraw } from "./iot";
 
 describe("auto fan rule", () => {
   it("turns on at the threshold", () => {
@@ -35,7 +35,6 @@ describe("power draw", () => {
   });
 });
 
-import { parseDevicePayloads } from "./iot";
 describe("device payload", () => {
   it("parses the documented format", () => {
     expect(parseDevicePayloads('{"Uid": 868225062598432, "Temperature": 25, "Humidity": 15}')).toEqual([{ Uid: 868225062598432, values: { Temperature: 25, Humidity: 15 } }]);
@@ -48,5 +47,39 @@ describe("device payload", () => {
   });
   it("rejects payloads without a Uid", () => {
     expect(parseDevicePayloads('{"Temperature": 25}')).toEqual([]);
+  });
+});
+
+describe("data with any field names", () => {
+  it("keeps field names that contain spaces and extra fields", () => {
+    expect(parseDevicePayloads('{"Uid": 868225062598433, "Light level": 3, "Humidity": 15, "Temperature": 26}')).toEqual([
+      { Uid: 868225062598433, values: { "Light level": 3, Humidity: 15, Temperature: 26 } },
+    ]);
+  });
+  it("keeps text and boolean readings instead of dropping them", () => {
+    expect(parseDevicePayloads('{"Uid": 7, "state": "online", "door": true, "batt": "3.7"}')).toEqual([
+      { Uid: 7, values: { state: "online", door: 1, batt: 3.7 } },
+    ]);
+  });
+  it("accepts a lowercase uid key", () => {
+    expect(parseDevicePayloads('{"uid": 12, "Temp": 20}')).toEqual([{ Uid: 12, values: { Temp: 20 } }]);
+  });
+  it("finds a field whatever the name looks like", () => {
+    const values = { "Light level": 3, Humidity: 15 };
+    expect(findFieldValue(values, "lightlevel")).toBe(3);
+    expect(findFieldValue(values, "LIGHT_LEVEL")).toBe(3);
+    expect(findFieldValue(values, "light")).toBe(3);
+    expect(findFieldValue(values, "missing")).toBeUndefined();
+  });
+  it("guesses the field a built-in sensor usually arrives as", () => {
+    expect(guessField("lux", ["Humidity", "Light level"])).toBe("Light level");
+    expect(guessField("humidity", ["Humidity", "Light level"])).toBe("Humidity");
+    expect(guessField("temperature", ["Temp C"])).toBe("Temp C");
+  });
+  it("treats on/off text as a switch", () => {
+    expect(isTruthyField("OFF")).toBe(false);
+    expect(isTruthyField("online")).toBe(true);
+    expect(isTruthyField(0)).toBe(false);
+    expect(isTruthyField(12)).toBe(true);
   });
 });

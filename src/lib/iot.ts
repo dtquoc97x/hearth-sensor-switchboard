@@ -86,22 +86,92 @@ export function nextReadings(prev: Readings, fans: Relay[], lights: Relay[]): Re
   };
 }
 
-/** Payload sent by a field device. Only "Uid" is required; every other numeric field is a reading, "ts" is an optional timestamp.
- *  e.g. {"Uid": 868225062598432, "Temperature": 25, "Humidity": 15, "ts": "2026-11-17T10:00:00"} */
-export type DevicePayload = { Uid: number; ts?: string; values: Record<string, number> };
+/** One reading as a device sends it: a number, or any text the device chooses to report. */
+export type FieldValue = number | string;
+
+/** Payload sent by a field device. Only a Uid is required; every other field is a reading with any name.
+ *  e.g. {"Uid": 868225062598433, "Light level": 3, "Humidity": 15, "Temperature": 26} */
+export type DevicePayload = { Uid: number; ts?: string; values: Record<string, FieldValue> };
+
+/** "Light level", "light_level", "LIGHTLEVEL" and "lightlevel" all name the same field. */
+export const normField = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/** Is this text just a number in disguise? */
+export const isNumericText = (s: string) => s.trim() !== "" && Number.isFinite(Number(s));
+
+/** true / "on" / 5 count as on; false / "off" / 0 / "no" count as off. */
+export function isTruthyField(v: FieldValue): boolean {
+  if (typeof v === "number") return v !== 0;
+  return !["", "0", "false", "no", "off", "clear", "dry", "closed", "none"].includes(v.trim().toLowerCase());
+}
+
+/** The field a device reported that best matches the name we were asked for. */
+export function findFieldName(values: Record<string, FieldValue>, wanted: string): string | undefined {
+  if (wanted in values) return wanted;
+  const w = normField(wanted);
+  if (!w) return undefined;
+  const keys = Object.keys(values);
+  const exact = keys.find((k) => normField(k) === w);
+  if (exact !== undefined) return exact;
+  const partial = keys
+    .filter((k) => normField(k).includes(w))
+    .sort((a, b) => normField(a).length - normField(b).length);
+  return partial[0];
+}
+
+/** Value of one field from one payload, whatever that field is actually called. */
+export function findFieldValue(values: Record<string, FieldValue>, wanted: string): FieldValue | undefined {
+  const key = findFieldName(values, wanted);
+  return key === undefined ? undefined : values[key];
+}
+
+const asNumber = (v: FieldValue | undefined) =>
+  typeof v === "number" ? v : typeof v === "string" && isNumericText(v) ? Number(v) : undefined;
+
+/** Built-in sensor name → the field names devices usually send for it. */
+const FIELD_ALIASES: Record<string, string[]> = {
+  temperature: ["temperature", "temp", "temp_c", "temperature_c"],
+  humidity: ["humidity", "hum", "rh"],
+  co2: ["co2", "carbon dioxide", "carbon_dioxide", "co2 ppm"],
+  pm25: ["pm25", "pm2.5", "pm 2.5", "dust"],
+  lux: ["lux", "light level", "light", "illuminance", "brightness"],
+  noise: ["noise", "sound", "db"],
+  pressure: ["pressure", "pres", "barometric"],
+  power: ["power", "energy", "watts", "watt", "w"],
+  motion: ["motion", "pir", "presence"],
+  door: ["door", "door state", "contact", "door_sensor"],
+  smoke: ["smoke", "gas", "smoke state"],
+  leak: ["leak", "water", "moisture", "water leak"],
+};
+
+/** Best-guess field name for a built-in sensor, from the fields a device has already reported. */
+export function guessField(kind: string, fields: string[]): string {
+  const bag: Record<string, FieldValue> = Object.fromEntries(fields.map((f) => [f, 0 as FieldValue]));
+  for (const alias of FIELD_ALIASES[kind] ?? [kind]) {
+    const hit = findFieldName(bag, alias);
+    if (hit !== undefined) return hit;
+  }
+  return fields[0] ?? "";
+}
 
 function toPayload(o: unknown): DevicePayload | null {
   if (!o || typeof o !== "object" || Array.isArray(o)) return null;
   const rec = o as Record<string, unknown>;
-  const uid = typeof rec["Uid"] === "string" && rec["Uid"].trim() !== "" ? Number(rec["Uid"]) : rec["Uid"];
+  const uidKey = Object.keys(rec).find((k) => normField(k) === "uid");
+  if (!uidKey) return null;
+  const rawUid = rec[uidKey];
+  const uid = typeof rawUid === "string" && rawUid.trim() !== "" ? Number(rawUid) : rawUid;
   if (typeof uid !== "number" || !Number.isFinite(uid)) return null;
-  const values: Record<string, number> = {};
+  const tsKey = Object.keys(rec).find((k) => normField(k) === "ts");
+  const values: Record<string, FieldValue> = {};
   for (const [k, v] of Object.entries(rec)) {
-    if (k === "Uid" || k === "ts") continue;
-    const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
-    if (Number.isFinite(n)) values[k] = n;
+    if (k === uidKey || k === tsKey) continue;
+    if (typeof v === "number") { if (Number.isFinite(v)) values[k] = v; continue; }
+    if (typeof v === "boolean") { values[k] = v ? 1 : 0; continue; }
+    if (typeof v === "string") { const t = v.trim(); if (t) values[k] = isNumericText(t) ? Number(t) : t; continue; }
+    // null, missing or nested values: nothing to display
   }
-  return { Uid: uid, ...(rec["ts"] != null ? { ts: String(rec["ts"]) } : {}), values };
+  return { Uid: uid, ...(tsKey !== undefined && rec[tsKey] != null ? { ts: String(rec[tsKey]) } : {}), values };
 }
 
 /** Parse one payload, a JSON array, or several comma-separated objects. Invalid items are dropped. */
@@ -117,11 +187,17 @@ export function parseDevicePayloads(raw: string): DevicePayload[] {
 
 /** Simulated next payload for a device, drifting from its previous reading. */
 export function simulateDevicePayload(uid: number, prev?: DevicePayload): DevicePayload {
-  const t = prev?.values["Temperature"] ?? 24 + Math.random() * 4;
-  const h = prev?.values["Humidity"] ?? 40 + Math.random() * 20;
+  const prevValues = prev?.values ?? {};
+  const t = asNumber(findFieldValue(prevValues, "Temperature")) ?? 24 + Math.random() * 4;
+  const h = asNumber(findFieldValue(prevValues, "Humidity")) ?? 40 + Math.random() * 20;
+  const l = asNumber(findFieldValue(prevValues, "Light level")) ?? 120 + Math.random() * 200;
   return {
     Uid: uid,
     ts: new Date().toISOString(),
-    values: { Temperature: +clamp(drift(t, 0.6), 15, 40).toFixed(1), Humidity: Math.round(clamp(drift(h, 3), 5, 95)) },
+    values: {
+      Temperature: +clamp(drift(t, 0.6), 15, 40).toFixed(1),
+      Humidity: Math.round(clamp(drift(h, 3), 5, 95)),
+      "Light level": Math.round(clamp(drift(l, 30), 5, 900)),
+    },
   };
 }
