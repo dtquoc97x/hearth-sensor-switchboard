@@ -305,7 +305,7 @@ function Dashboard() {
             {visible.map((m) => (
               <ModuleShell key={m.id} id={m.id} title={moduleTitle(m)} editing={editing} span={span(m)}
                 onHide={() => setHidden(m.id, true)}
-                onEdit={m.type === "chart" || m.type === "activity" ? undefined : () => setEditTarget(m)}
+                onEdit={m.type === "chart" || m.type === "activity" ? undefined : () => setEditTarget(m as RelayModule | SensorModule)}
                 onRemove={m.type === "chart" || m.type === "activity" ? undefined : () => remove(m)}>
                 {renderModule(m)}
               </ModuleShell>

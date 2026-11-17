@@ -93,7 +93,7 @@ export type DevicePayload = { Uid: number; ts?: string; values: Record<string, n
 function toPayload(o: unknown): DevicePayload | null {
   if (!o || typeof o !== "object" || Array.isArray(o)) return null;
   const rec = o as Record<string, unknown>;
-  const uid = typeof rec.Uid === "string" && rec.Uid.trim() !== "" ? Number(rec.Uid) : rec.Uid;
+  const uid = typeof rec["Uid"] === "string" && rec["Uid"].trim() !== "" ? Number(rec["Uid"]) : rec["Uid"];
   if (typeof uid !== "number" || !Number.isFinite(uid)) return null;
   const values: Record<string, number> = {};
   for (const [k, v] of Object.entries(rec)) {
@@ -101,7 +101,7 @@ function toPayload(o: unknown): DevicePayload | null {
     const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
     if (Number.isFinite(n)) values[k] = n;
   }
-  return { Uid: uid, ...(rec.ts != null ? { ts: String(rec.ts) } : {}), values };
+  return { Uid: uid, ...(rec["ts"] != null ? { ts: String(rec["ts"]) } : {}), values };
 }
 
 /** Parse one payload, a JSON array, or several comma-separated objects. Invalid items are dropped. */
@@ -117,8 +117,8 @@ export function parseDevicePayloads(raw: string): DevicePayload[] {
 
 /** Simulated next payload for a device, drifting from its previous reading. */
 export function simulateDevicePayload(uid: number, prev?: DevicePayload): DevicePayload {
-  const t = prev?.values.Temperature ?? 24 + Math.random() * 4;
-  const h = prev?.values.Humidity ?? 40 + Math.random() * 20;
+  const t = prev?.values["Temperature"] ?? 24 + Math.random() * 4;
+  const h = prev?.values["Humidity"] ?? 40 + Math.random() * 20;
   return {
     Uid: uid,
     ts: new Date().toISOString(),
