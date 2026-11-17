@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { autoFanState, autoLightState, powerDraw } from "./iot";
+import { autoFanState, autoLightState, findFieldValue, guessField, isTruthyField, parseDevicePayloads, powerDraw } from "./iot";
 
 describe("auto fan rule", () => {
   it("turns on at the threshold", () => {
