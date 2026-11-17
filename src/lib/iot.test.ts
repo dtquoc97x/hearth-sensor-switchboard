@@ -35,7 +35,6 @@ describe("power draw", () => {
   });
 });
 
-import { parseDevicePayloads } from "./iot";
 describe("device payload", () => {
   it("parses the documented format", () => {
     expect(parseDevicePayloads('{"Uid": 868225062598432, "Temperature": 25, "Humidity": 15}')).toEqual([{ Uid: 868225062598432, values: { Temperature: 25, Humidity: 15 } }]);
