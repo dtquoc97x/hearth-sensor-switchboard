@@ -1,4 +1,4 @@
-import { Activity, AudioLines, Cloud, DoorOpen, Droplets, Flame, Gauge, Sun, Thermometer, Waves, Wind, Zap, type LucideIcon } from "lucide-react";
+import { Activity, AudioLines, Cloud, DoorOpen, Droplets, Flame, Gauge, SlidersHorizontal, Sun, Thermometer, Waves, Wind, Zap, type LucideIcon } from "lucide-react";
 import type { SensorKind } from "@/lib/modules";
 import type { Status } from "./SensorTile";
 
@@ -25,4 +25,6 @@ export const SENSOR_META: Record<SensorKind, Meta> = {
   door: { label: "Door", icon: DoorOpen, format: (v) => (v ? "Open" : "Closed"), status: (v) => (v ? "alert" : "ok") },
   smoke: { label: "Smoke / Gas", icon: Flame, format: (v) => (v ? "Alarm" : "Normal"), status: (v) => (v ? "alert" : "ok") },
   leak: { label: "Water leak", icon: Waves, format: (v) => (v ? "Leak!" : "Dry"), status: (v) => (v ? "alert" : "ok") },
+  /** Any field a device sends that the hub has no built-in tile for: shown as-is, no unit. */
+  custom: { label: "Any field", icon: SlidersHorizontal, format: (v) => (typeof v === "number" ? (Number.isInteger(v) ? String(v) : v.toFixed(1)) : String(v)) },
 };

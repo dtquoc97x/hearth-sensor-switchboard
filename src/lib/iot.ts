@@ -187,11 +187,17 @@ export function parseDevicePayloads(raw: string): DevicePayload[] {
 
 /** Simulated next payload for a device, drifting from its previous reading. */
 export function simulateDevicePayload(uid: number, prev?: DevicePayload): DevicePayload {
-  const t = prev?.values["Temperature"] ?? 24 + Math.random() * 4;
-  const h = prev?.values["Humidity"] ?? 40 + Math.random() * 20;
+  const prevValues = prev?.values ?? {};
+  const t = asNumber(findFieldValue(prevValues, "Temperature")) ?? 24 + Math.random() * 4;
+  const h = asNumber(findFieldValue(prevValues, "Humidity")) ?? 40 + Math.random() * 20;
+  const l = asNumber(findFieldValue(prevValues, "Light level")) ?? 120 + Math.random() * 200;
   return {
     Uid: uid,
     ts: new Date().toISOString(),
-    values: { Temperature: +clamp(drift(t, 0.6), 15, 40).toFixed(1), Humidity: Math.round(clamp(drift(h, 3), 5, 95)) },
+    values: {
+      Temperature: +clamp(drift(t, 0.6), 15, 40).toFixed(1),
+      Humidity: Math.round(clamp(drift(h, 3), 5, 95)),
+      "Light level": Math.round(clamp(drift(l, 30), 5, 900)),
+    },
   };
 }
