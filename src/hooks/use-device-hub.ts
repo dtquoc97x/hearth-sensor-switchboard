@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
-import { simulateDevicePayload, type DevicePayload } from "@/lib/iot";
+import { findFieldValue, simulateDevicePayload, type DevicePayload, type FieldValue } from "@/lib/iot";
 
 export type Device = { id: string; name: string; uid: number; simulate: boolean };
 export type DeviceLogEntry = DevicePayload & { id: string; time: string };
@@ -33,9 +33,15 @@ const subscribe = (l: () => void) => { load(); listeners.add(l); return () => li
 /** Every reading field a device has reported so far. */
 export const fieldsFor = (log: DeviceLogEntry[], uid: number) =>
   [...new Set(log.filter((e) => e.Uid === uid).flatMap((e) => Object.keys(e.values)))];
-/** Latest value of one field from one device. */
-export const latestValue = (log: DeviceLogEntry[], uid: number, field: string) =>
-  log.find((e) => e.Uid === uid && field in e.values)?.values[field];
+/** Latest value of one field from one device, whatever the field is actually called in the payload. */
+export const latestValue = (log: DeviceLogEntry[], uid: number, field: string): FieldValue | undefined => {
+  for (const e of log) {
+    if (e.Uid !== uid) continue;
+    const v = findFieldValue(e.values, field);
+    if (v !== undefined) return v;
+  }
+  return undefined;
+};
 export const latestFor = (log: DeviceLogEntry[], uid: number) => log.find((e) => e.Uid === uid);
 
 export const hub = {
