@@ -102,6 +102,7 @@ function Dashboard() {
 
   const sensorValue = (m: SensorModule): number | boolean => {
     if (BOOLEAN_SENSORS.includes(m.kind)) return !!s.flags[m.id];
+    if (picked && (m.kind === "temperature" || m.kind === "humidity")) return r[m.kind];
     return (r[m.kind] as number) + sensorOffset(m.id, m.kind);
   };
 
