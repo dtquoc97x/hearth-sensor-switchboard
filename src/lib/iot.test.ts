@@ -35,12 +35,18 @@ describe("power draw", () => {
   });
 });
 
-import { parseDevicePayload } from "./iot";
+import { parseDevicePayloads } from "./iot";
 describe("device payload", () => {
   it("parses the documented format", () => {
-    expect(parseDevicePayload('{"Uid": 868225062598432, "Temperature": 25, "Humidity": 15}')).toEqual({ Uid: 868225062598432, Temperature: 25, Humidity: 15 });
+    expect(parseDevicePayloads('{"Uid": 868225062598432, "Temperature": 25, "Humidity": 15}')).toEqual([{ Uid: 868225062598432, values: { Temperature: 25, Humidity: 15 } }]);
   });
-  it("rejects payloads missing a field", () => {
-    expect(parseDevicePayload('{"Uid": 1, "Temperature": 25}')).toBeNull();
+  it("keeps the optional ts and any extra numeric fields", () => {
+    expect(parseDevicePayloads('{"Uid": 1, "Temperature": 25, "CO2": 600, "ts": "10:00"}')).toEqual([{ Uid: 1, ts: "10:00", values: { Temperature: 25, CO2: 600 } }]);
+  });
+  it("accepts several comma-separated objects", () => {
+    expect(parseDevicePayloads('{"Uid": 1, "Temperature": 25}, {"Uid": 2, "Humidity": 15},')).toHaveLength(2);
+  });
+  it("rejects payloads without a Uid", () => {
+    expect(parseDevicePayloads('{"Temperature": 25}')).toEqual([]);
   });
 });

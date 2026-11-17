@@ -86,29 +86,42 @@ export function nextReadings(prev: Readings, fans: Relay[], lights: Relay[]): Re
   };
 }
 
-/** Payload sent by a field device, e.g. {"Uid": 868225062598432, "Temperature": 25, "Humidity": 15}. */
-export type DevicePayload = { Uid: number; Temperature: number; Humidity: number };
+/** Payload sent by a field device. Only "Uid" is required; every other numeric field is a reading, "ts" is an optional timestamp.
+ *  e.g. {"Uid": 868225062598432, "Temperature": 25, "Humidity": 15, "ts": "2026-11-17T10:00:00"} */
+export type DevicePayload = { Uid: number; ts?: string; values: Record<string, number> };
 
-/** Parse and validate a device payload; returns null when the JSON doesn't match the format. */
-export function parseDevicePayload(raw: string): DevicePayload | null {
-  try {
-    const o = JSON.parse(raw);
-    if (o && typeof o.Uid === "number" && typeof o.Temperature === "number" && typeof o.Humidity === "number") {
-      return { Uid: o.Uid, Temperature: o.Temperature, Humidity: o.Humidity };
-    }
-  } catch {
-    /* invalid JSON */
+function toPayload(o: unknown): DevicePayload | null {
+  if (!o || typeof o !== "object" || Array.isArray(o)) return null;
+  const rec = o as Record<string, unknown>;
+  const uid = typeof rec["Uid"] === "string" && rec["Uid"].trim() !== "" ? Number(rec["Uid"]) : rec["Uid"];
+  if (typeof uid !== "number" || !Number.isFinite(uid)) return null;
+  const values: Record<string, number> = {};
+  for (const [k, v] of Object.entries(rec)) {
+    if (k === "Uid" || k === "ts") continue;
+    const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
+    if (Number.isFinite(n)) values[k] = n;
   }
-  return null;
+  return { Uid: uid, ...(rec["ts"] != null ? { ts: String(rec["ts"]) } : {}), values };
+}
+
+/** Parse one payload, a JSON array, or several comma-separated objects. Invalid items are dropped. */
+export function parseDevicePayloads(raw: string): DevicePayload[] {
+  const text = raw.trim().replace(/,\s*$/, "");
+  let data: unknown;
+  try { data = JSON.parse(text); } catch {
+    try { data = JSON.parse(`[${text}]`); } catch { return []; }
+  }
+  const list = Array.isArray(data) ? data : [data];
+  return list.map(toPayload).filter((p): p is DevicePayload => p !== null);
 }
 
 /** Simulated next payload for a device, drifting from its previous reading. */
 export function simulateDevicePayload(uid: number, prev?: DevicePayload): DevicePayload {
-  const t = prev?.Temperature ?? 24 + Math.random() * 4;
-  const h = prev?.Humidity ?? 40 + Math.random() * 20;
+  const t = prev?.values["Temperature"] ?? 24 + Math.random() * 4;
+  const h = prev?.values["Humidity"] ?? 40 + Math.random() * 20;
   return {
     Uid: uid,
-    Temperature: +clamp(drift(t, 0.6), 15, 40).toFixed(1),
-    Humidity: Math.round(clamp(drift(h, 3), 5, 95)),
+    ts: new Date().toISOString(),
+    values: { Temperature: +clamp(drift(t, 0.6), 15, 40).toFixed(1), Humidity: Math.round(clamp(drift(h, 3), 5, 95)) },
   };
 }
