@@ -13,7 +13,7 @@ import { AddDeviceDialog, type NewDevice } from "@/components/dashboard/AddDevic
 import { latestValue, useDeviceHub } from "@/hooks/use-device-hub";
 import { SENSOR_META } from "@/components/dashboard/sensorMeta";
 import { cn } from "@/lib/utils";
-import { fanWatts, lightWatts, type Relay } from "@/lib/iot";
+import { fanWatts, isNumericText, isTruthyField, lightWatts, type Relay } from "@/lib/iot";
 import {
   BOOLEAN_SENSORS, addLog, clockNow, defaultModules, initialSim, moduleTitle, parseSavedModules, sensorOffset, tick,
   type Module, type RelayModule, type SensorModule, type SimState,
