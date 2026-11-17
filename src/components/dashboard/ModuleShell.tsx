@@ -1,14 +1,14 @@
 import type { ReactNode } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { EyeOff, GripHorizontal, Trash2 } from "lucide-react";
+import { EyeOff, GripHorizontal, Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function ModuleShell({
-  id, title, editing, span, onHide, onRemove, children,
+  id, title, editing, span, onHide, onRemove, onEdit, children,
 }: {
   id: string; title: string; editing: boolean; span: string;
-  onHide: () => void; onRemove?: (() => void) | undefined; children: ReactNode;
+  onHide: () => void; onEdit?: (() => void) | undefined; onRemove?: (() => void) | undefined; children: ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled: !editing });
   return (
@@ -29,6 +29,11 @@ export function ModuleShell({
             <GripHorizontal className="size-4" /> {title}
           </button>
           <div className="flex gap-1">
+            {onEdit && (
+              <button type="button" onClick={onEdit} aria-label={`Edit ${title}`} className="rounded-full border bg-card p-1.5 text-muted-foreground shadow-sm hover:text-foreground">
+                <Pencil className="size-3.5" />
+              </button>
+            )}
             <button type="button" onClick={onHide} aria-label={`Hide ${title}`} className="rounded-full border bg-card p-1.5 text-muted-foreground shadow-sm hover:text-foreground">
               <EyeOff className="size-3.5" />
             </button>

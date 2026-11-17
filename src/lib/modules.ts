@@ -8,7 +8,9 @@ export const BOOLEAN_SENSORS: SensorKind[] = ["motion", "door", "smoke", "leak"]
 
 type Base = { id: string; hidden: boolean };
 export type RelayModule = Base & { type: "fan" | "light"; name: string; room: string; relay: Relay; threshold: number };
-export type SensorModule = Base & { type: "sensor"; kind: SensorKind; name: string; room: string };
+/** Where a sensor tile gets its value: the built-in simulation, or one field of one registered device. */
+export type SensorSource = { uid: number; field: string };
+export type SensorModule = Base & { type: "sensor"; kind: SensorKind; name: string; room: string; source?: SensorSource };
 export type PanelModule = Base & { type: "chart" | "activity" };
 export type Module = RelayModule | SensorModule | PanelModule;
 

@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { hub, latestFor, useDeviceHub } from "@/hooks/use-device-hub";
-import { parseDevicePayload } from "@/lib/iot";
+import { parseDevicePayloads } from "@/lib/iot";
 
 export const Route = createFileRoute("/devices")({
   head: () => ({
@@ -26,7 +26,7 @@ function DevicesPage() {
   const h = useDeviceHub();
   const [name, setName] = useState("");
   const [uid, setUid] = useState("");
-  const [raw, setRaw] = useState('{"Uid": 868225062598432, "Temperature": 25, "Humidity": 15}');
+  const [raw, setRaw] = useState('{"Uid": 868225062598432, "Temperature": 25, "Humidity": 15, "ts": "2026-11-17T10:00:00"},\n{"Uid": 868225062598433, "Temperature": 25, "Humidity": 15}');
   const [err, setErr] = useState("");
   const [filter, setFilter] = useState<number | "all">("all");
   const nameOf = (u: number) => h.devices.find((d) => d.uid === u)?.name ?? "Unknown device";
@@ -66,7 +66,7 @@ function DevicesPage() {
                     <p className="font-medium">{d.name}</p>
                     <p className="readout text-xs text-muted-foreground">UID {d.uid}</p>
                   </div>
-                  <p className="readout text-sm">{last ? `${last.Temperature} °C · ${last.Humidity} %` : "No data"}</p>
+                  <p className="readout text-sm">{last ? Object.entries(last.values).map(([k, v]) => `${k} ${v}`).join(" · ") : "No data"}</p>
                   <label className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Switch checked={d.simulate} onCheckedChange={() => hub.toggleSimulate(d.id)} /> Simulate
                   </label>
@@ -79,12 +79,12 @@ function DevicesPage() {
 
         <section className="panel flex flex-col gap-3 p-6">
           <h2 className="text-lg font-semibold">Send test data</h2>
-          <textarea value={raw} onChange={(e) => setRaw(e.target.value)} rows={4}
+          <textarea value={raw} onChange={(e) => setRaw(e.target.value)} rows={6}
             className="readout rounded-md border bg-background p-3 text-sm" />
           <Button onClick={() => {
-            const p = parseDevicePayload(raw);
-            if (!p) return setErr('Use the format {"Uid": 123, "Temperature": 25, "Humidity": 15}.');
-            setErr(""); hub.pushPayload(p);
+            const list = parseDevicePayloads(raw);
+            if (!list.length) return setErr('Each item needs a numeric "Uid", e.g. {"Uid": 123, "Temperature": 25}.');
+            setErr(""); list.forEach(hub.pushPayload);
           }}><Send /> Send</Button>
         </section>
       </div>
@@ -104,15 +104,16 @@ function DevicesPage() {
         <div className="max-h-[28rem] overflow-y-auto">
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-card text-left text-xs text-muted-foreground">
-              <tr><th className="py-2">Time</th><th>Device</th><th>Data</th></tr>
+              <tr><th className="py-2">Received</th><th>Device</th><th>ts</th><th>Data</th></tr>
             </thead>
             <tbody>
-              {rows.length === 0 && <tr><td colSpan={3} className="py-3 text-muted-foreground">Waiting for data…</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={4} className="py-3 text-muted-foreground">Waiting for data…</td></tr>}
               {rows.map((e) => (
                 <tr key={e.id} className="border-t">
                   <td className="readout py-2 text-muted-foreground">{e.time}</td>
                   <td>{nameOf(e.Uid)}</td>
-                  <td className="readout text-xs">{JSON.stringify({ Uid: e.Uid, Temperature: e.Temperature, Humidity: e.Humidity })}</td>
+                  <td className="readout text-xs text-muted-foreground">{e.ts ?? "—"}</td>
+                  <td className="readout text-xs">{JSON.stringify({ Uid: e.Uid, ...e.values, ...(e.ts ? { ts: e.ts } : {}) })}</td>
                 </tr>
               ))}
             </tbody>

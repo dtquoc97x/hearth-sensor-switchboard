@@ -3,14 +3,13 @@ import { simulateDevicePayload, type DevicePayload } from "@/lib/iot";
 
 export type Device = { id: string; name: string; uid: number; simulate: boolean };
 export type DeviceLogEntry = DevicePayload & { id: string; time: string };
-type Hub = { devices: Device[]; log: DeviceLogEntry[]; selectedUid: number | null };
+type Hub = { devices: Device[]; log: DeviceLogEntry[] };
 
-const KEY = "homebase.devices.v1";
+const KEY = "homebase.devices.v2";
 const MAX_LOG = 300;
 const empty: Hub = {
   devices: [{ id: "d-1", name: "Living room node", uid: 868225062598432, simulate: true }],
   log: [],
-  selectedUid: null,
 };
 let state: Hub = empty;
 let loaded = false;
@@ -31,6 +30,12 @@ function set(fn: (h: Hub) => Hub) {
 }
 const subscribe = (l: () => void) => { load(); listeners.add(l); return () => listeners.delete(l); };
 
+/** Every reading field a device has reported so far. */
+export const fieldsFor = (log: DeviceLogEntry[], uid: number) =>
+  [...new Set(log.filter((e) => e.Uid === uid).flatMap((e) => Object.keys(e.values)))];
+/** Latest value of one field from one device. */
+export const latestValue = (log: DeviceLogEntry[], uid: number, field: string) =>
+  log.find((e) => e.Uid === uid && field in e.values)?.values[field];
 export const latestFor = (log: DeviceLogEntry[], uid: number) => log.find((e) => e.Uid === uid);
 
 export const hub = {
@@ -38,14 +43,12 @@ export const hub = {
     set((h) => ({ ...h, devices: [...h.devices, { id: `d-${crypto.randomUUID().slice(0, 8)}`, name, uid, simulate: true }] })),
   removeDevice: (id: string) =>
     set((h) => {
-      const d = h.devices.find((x) => x.id === id);
-      return { ...h, devices: h.devices.filter((x) => x.id !== id), selectedUid: d && d.uid === h.selectedUid ? null : h.selectedUid };
+      return { ...h, devices: h.devices.filter((x) => x.id !== id) };
     }),
   toggleSimulate: (id: string) => set((h) => ({ ...h, devices: h.devices.map((d) => (d.id === id ? { ...d, simulate: !d.simulate } : d)) })),
   pushPayload: (p: DevicePayload) =>
     set((h) => ({ ...h, log: [{ ...p, id: crypto.randomUUID(), time: new Date().toLocaleTimeString([], { hour12: false }) }, ...h.log].slice(0, MAX_LOG) })),
   clearLog: () => set((h) => ({ ...h, log: [] })),
-  select: (uid: number | null) => set((h) => ({ ...h, selectedUid: uid })),
 };
 
 let timer: ReturnType<typeof setInterval> | null = null;
