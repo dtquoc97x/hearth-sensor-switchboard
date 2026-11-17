@@ -1,6 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Check, Eye, Fan, LayoutGrid, Lightbulb, Radio, RotateCcw } from "lucide-react";
+import { Check, Cpu, Eye, Fan, LayoutGrid, Lightbulb, Radio, RotateCcw } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
@@ -10,6 +10,8 @@ import { SensorTile } from "@/components/dashboard/SensorTile";
 import { RelayCard } from "@/components/dashboard/RelayCard";
 import { ModuleShell } from "@/components/dashboard/ModuleShell";
 import { AddDeviceDialog, type NewDevice } from "@/components/dashboard/AddDeviceDialog";
+import { DeviceSourceDialog } from "@/components/dashboard/DeviceSourceDialog";
+import { latestFor, useDeviceHub } from "@/hooks/use-device-hub";
 import { SENSOR_META } from "@/components/dashboard/sensorMeta";
 import { cn } from "@/lib/utils";
 import { fanWatts, lightWatts, type Relay } from "@/lib/iot";
@@ -63,7 +65,9 @@ function Dashboard() {
   }, [s.modules]);
 
   const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
-  const r = s.readings;
+  const deviceHub = useDeviceHub();
+  const picked = deviceHub.selectedUid != null ? latestFor(deviceHub.log, deviceHub.selectedUid) : undefined;
+  const r = picked ? { ...s.readings, temperature: picked.Temperature, humidity: picked.Humidity } : s.readings;
   const visible = s.modules.filter((m) => !m.hidden);
   const hidden = s.modules.filter((m) => m.hidden);
   const fanThreshold = (s.modules.find((m) => m.type === "fan") as RelayModule | undefined)?.threshold ?? 28;
@@ -98,6 +102,7 @@ function Dashboard() {
 
   const sensorValue = (m: SensorModule): number | boolean => {
     if (BOOLEAN_SENSORS.includes(m.kind)) return !!s.flags[m.id];
+    if (picked && (m.kind === "temperature" || m.kind === "humidity")) return r[m.kind];
     return (r[m.kind] as number) + sensorOffset(m.id, m.kind);
   };
 
@@ -246,6 +251,8 @@ function Dashboard() {
           <Stat label="Local time" value={clock || "--:--:--"} />
           <Stat label="Total load" value={`${r.power} W`} />
           <Stat label="Alerts" value={String(alerts)} tone={alerts ? "alert" : "ok"} />
+          <DeviceSourceDialog />
+          <Button variant="outline" asChild className="h-auto self-stretch"><Link to="/devices"><Cpu /> Devices</Link></Button>
           <Button variant={editing ? "default" : "outline"} onClick={() => setEditing((e) => !e)} className="h-auto self-stretch">
             {editing ? <Check /> : <LayoutGrid />} {editing ? "Done" : "Customize"}
           </Button>

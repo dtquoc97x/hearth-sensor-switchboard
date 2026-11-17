@@ -85,3 +85,30 @@ export function nextReadings(prev: Readings, fans: Relay[], lights: Relay[]): Re
     leak: Math.random() < (prev.leak ? 0.8 : 0.005),
   };
 }
+
+/** Payload sent by a field device, e.g. {"Uid": 868225062598432, "Temperature": 25, "Humidity": 15}. */
+export type DevicePayload = { Uid: number; Temperature: number; Humidity: number };
+
+/** Parse and validate a device payload; returns null when the JSON doesn't match the format. */
+export function parseDevicePayload(raw: string): DevicePayload | null {
+  try {
+    const o = JSON.parse(raw);
+    if (o && typeof o.Uid === "number" && typeof o.Temperature === "number" && typeof o.Humidity === "number") {
+      return { Uid: o.Uid, Temperature: o.Temperature, Humidity: o.Humidity };
+    }
+  } catch {
+    /* invalid JSON */
+  }
+  return null;
+}
+
+/** Simulated next payload for a device, drifting from its previous reading. */
+export function simulateDevicePayload(uid: number, prev?: DevicePayload): DevicePayload {
+  const t = prev?.Temperature ?? 24 + Math.random() * 4;
+  const h = prev?.Humidity ?? 40 + Math.random() * 20;
+  return {
+    Uid: uid,
+    Temperature: +clamp(drift(t, 0.6), 15, 40).toFixed(1),
+    Humidity: Math.round(clamp(drift(h, 3), 5, 95)),
+  };
+}

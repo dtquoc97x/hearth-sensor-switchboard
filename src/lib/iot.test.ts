@@ -34,3 +34,13 @@ describe("power draw", () => {
     expect(powerDraw([{ on: true, auto: false, level: 1 }, { on: true, auto: false, level: 3 }, off], [off])).toBe(85 + 18 + 54);
   });
 });
+
+import { parseDevicePayload } from "./iot";
+describe("device payload", () => {
+  it("parses the documented format", () => {
+    expect(parseDevicePayload('{"Uid": 868225062598432, "Temperature": 25, "Humidity": 15}')).toEqual({ Uid: 868225062598432, Temperature: 25, Humidity: 15 });
+  });
+  it("rejects payloads missing a field", () => {
+    expect(parseDevicePayload('{"Uid": 1, "Temperature": 25}')).toBeNull();
+  });
+});
