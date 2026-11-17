@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -6,35 +6,58 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SENSOR_META } from "./sensorMeta";
-import type { SensorKind } from "@/lib/modules";
+import { fieldsFor, useDeviceHub } from "@/hooks/use-device-hub";
+import type { SensorKind, SensorSource } from "@/lib/modules";
 
-export type NewDevice = { kind: "fan" | "light" | SensorKind; name: string; room: string };
+export type NewDevice = { kind: "fan" | "light" | SensorKind; name: string; room: string; source?: SensorSource | undefined };
 
-export function AddDeviceDialog({ onAdd }: { onAdd: (d: NewDevice) => void }) {
-  const [open, setOpen] = useState(false);
-  const [kind, setKind] = useState<NewDevice["kind"]>("fan");
-  const [name, setName] = useState("");
-  const [room, setRoom] = useState("");
+const SIM = "sim";
+const guessField = (kind: string, fields: string[]) =>
+  fields.find((f) => f.toLowerCase() === kind.toLowerCase()) ?? fields.find((f) => f.toLowerCase().startsWith(kind.slice(0, 4).toLowerCase())) ?? fields[0] ?? "";
+
+/** Add a new panel, or edit an existing one when `initial` is given (type is then fixed). */
+export function AddDeviceDialog({ onAdd, initial, open: openProp, onOpenChange, trigger }: {
+  onAdd: (d: NewDevice) => void; initial?: NewDevice | undefined; open?: boolean; onOpenChange?: (o: boolean) => void; trigger?: ReactNode;
+}) {
+  const hubState = useDeviceHub();
+  const [openState, setOpenState] = useState(false);
+  const open = openProp ?? openState;
+  const setOpen = onOpenChange ?? setOpenState;
+  const [kind, setKind] = useState<NewDevice["kind"]>(initial?.kind ?? "fan");
+  const [name, setName] = useState(initial?.name ?? "");
+  const [room, setRoom] = useState(initial?.room ?? "");
+  const [srcUid, setSrcUid] = useState(initial?.source ? String(initial.source.uid) : SIM);
+  const [field, setField] = useState(initial?.source?.field ?? "");
+
+  useEffect(() => {
+    if (!open) return;
+    setKind(initial?.kind ?? "fan"); setName(initial?.name ?? ""); setRoom(initial?.room ?? "");
+    setSrcUid(initial?.source ? String(initial.source.uid) : SIM); setField(initial?.source?.field ?? "");
+  }, [open, initial]);
+
+  const isSensor = kind !== "fan" && kind !== "light";
   const defaultName = kind === "fan" ? "Fan" : kind === "light" ? "Light" : SENSOR_META[kind].label;
+  const fields = srcUid === SIM ? [] : fieldsFor(hubState.log, Number(srcUid));
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm"><Plus /> Add device</Button>
-      </DialogTrigger>
+      {trigger !== null && (
+        <DialogTrigger asChild>{trigger ?? <Button size="sm"><Plus /> Add device</Button>}</DialogTrigger>
+      )}
       <DialogContent>
-        <DialogHeader><DialogTitle>Add a device</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{initial ? `Edit ${initial.name}` : "Add a device"}</DialogTitle></DialogHeader>
         <form
           className="flex flex-col gap-4"
           onSubmit={(e) => {
             e.preventDefault();
-            onAdd({ kind, name: name.trim() || defaultName, room: room.trim() || "Home" });
-            setName(""); setRoom(""); setOpen(false);
+            const source = isSensor && srcUid !== SIM && field.trim() ? { uid: Number(srcUid), field: field.trim() } : undefined;
+            onAdd({ kind, name: name.trim() || defaultName, room: room.trim() || "Home", source });
+            setOpen(false);
           }}
         >
           <div className="flex flex-col gap-2">
             <Label>Device type</Label>
-            <Select value={kind} onValueChange={(v) => setKind(v as NewDevice["kind"])}>
+            <Select value={kind} onValueChange={(v) => setKind(v as NewDevice["kind"])} disabled={!!initial}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectGroup>
@@ -59,7 +82,34 @@ export function AddDeviceDialog({ onAdd }: { onAdd: (d: NewDevice) => void }) {
             <Label htmlFor="dev-room">Room</Label>
             <Input id="dev-room" value={room} onChange={(e) => setRoom(e.target.value)} placeholder="e.g. Bedroom" />
           </div>
-          <DialogFooter><Button type="submit">Add</Button></DialogFooter>
+          {isSensor && (
+            <div className="flex flex-col gap-3 rounded-lg border p-3">
+              <div className="flex flex-col gap-2">
+                <Label>Data from</Label>
+                <Select value={srcUid} onValueChange={(v) => {
+                  setSrcUid(v);
+                  if (v !== SIM) setField(guessField(kind, fieldsFor(hubState.log, Number(v))));
+                }}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={SIM}>Built-in simulation</SelectItem>
+                    {hubState.devices.map((d) => (
+                      <SelectItem key={d.id} value={String(d.uid)}>{d.name} · {d.uid}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {srcUid !== SIM && (
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="dev-field">Data field</Label>
+                  <Input id="dev-field" list="dev-fields" value={field} onChange={(e) => setField(e.target.value)} placeholder="e.g. Temperature" />
+                  <datalist id="dev-fields">{fields.map((f) => <option key={f} value={f} />)}</datalist>
+                  {fields.length > 0 && <p className="text-xs text-muted-foreground">Reported so far: {fields.join(", ")}</p>}
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter><Button type="submit">{initial ? "Save" : "Add"}</Button></DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

@@ -10,8 +10,7 @@ import { SensorTile } from "@/components/dashboard/SensorTile";
 import { RelayCard } from "@/components/dashboard/RelayCard";
 import { ModuleShell } from "@/components/dashboard/ModuleShell";
 import { AddDeviceDialog, type NewDevice } from "@/components/dashboard/AddDeviceDialog";
-import { DeviceSourceDialog } from "@/components/dashboard/DeviceSourceDialog";
-import { latestFor, useDeviceHub } from "@/hooks/use-device-hub";
+import { latestValue, useDeviceHub } from "@/hooks/use-device-hub";
 import { SENSOR_META } from "@/components/dashboard/sensorMeta";
 import { cn } from "@/lib/utils";
 import { fanWatts, lightWatts, type Relay } from "@/lib/iot";
@@ -66,8 +65,8 @@ function Dashboard() {
 
   const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const deviceHub = useDeviceHub();
-  const picked = deviceHub.selectedUid != null ? latestFor(deviceHub.log, deviceHub.selectedUid) : undefined;
-  const r = picked ? { ...s.readings, temperature: picked.Temperature, humidity: picked.Humidity } : s.readings;
+  const [editTarget, setEditTarget] = useState<RelayModule | SensorModule | null>(null);
+  const r = s.readings;
   const visible = s.modules.filter((m) => !m.hidden);
   const hidden = s.modules.filter((m) => m.hidden);
   const fanThreshold = (s.modules.find((m) => m.type === "fan") as RelayModule | undefined)?.threshold ?? 28;
@@ -87,8 +86,20 @@ function Dashboard() {
     const m: Module =
       d.kind === "fan" || d.kind === "light"
         ? { id, type: d.kind, name: d.name, room: d.room, hidden: false, threshold: d.kind === "fan" ? 28 : 150, relay: { on: false, auto: false, level: d.kind === "fan" ? 2 : 70 } }
-        : { id, type: "sensor", kind: d.kind, name: d.name, room: d.room, hidden: false };
+        : { id, type: "sensor", kind: d.kind, name: d.name, room: d.room, hidden: false, ...(d.source ? { source: d.source } : {}) };
     setS((p) => ({ ...p, modules: [...p.modules, m], log: addLog(p.log, `${d.name} added · ${d.room}`, "on") }));
+  };
+
+  const saveEdit = (d: NewDevice) => {
+    if (!editTarget) return;
+    update(editTarget.id, (m) => {
+      const next = { ...m, name: d.name, room: d.room } as Module;
+      if (next.type === "sensor") {
+        if (d.source) next.source = d.source;
+        else delete next.source;
+      }
+      return next;
+    }, [`${d.name} updated`, "on"]);
   };
 
   const onDragEnd = ({ active, over }: DragEndEvent) => {
@@ -101,8 +112,11 @@ function Dashboard() {
   };
 
   const sensorValue = (m: SensorModule): number | boolean => {
+    if (m.source) {
+      const v = latestValue(deviceHub.log, m.source.uid, m.source.field) ?? 0;
+      return BOOLEAN_SENSORS.includes(m.kind) ? v !== 0 : v;
+    }
     if (BOOLEAN_SENSORS.includes(m.kind)) return !!s.flags[m.id];
-    if (picked && (m.kind === "temperature" || m.kind === "humidity")) return r[m.kind];
     return (r[m.kind] as number) + sensorOffset(m.id, m.kind);
   };
 
@@ -119,7 +133,9 @@ function Dashboard() {
           unit={meta.unit}
           status={meta.status?.(v, ctx) ?? "ok"}
           progress={typeof v === "number" ? meta.progress?.(v) : undefined}
-          hint={meta.hint ? `${meta.hint(v, ctx)} · ${m.room}` : m.room}
+          hint={m.source
+            ? `${deviceHub.devices.find((d) => d.uid === m.source!.uid)?.name ?? `UID ${m.source.uid}`} · ${m.source.field}${latestValue(deviceHub.log, m.source.uid, m.source.field) === undefined ? " · no data" : ""}`
+            : meta.hint ? `${meta.hint(v, ctx)} · ${m.room}` : m.room}
         />
       );
     }
@@ -251,7 +267,6 @@ function Dashboard() {
           <Stat label="Local time" value={clock || "--:--:--"} />
           <Stat label="Total load" value={`${r.power} W`} />
           <Stat label="Alerts" value={String(alerts)} tone={alerts ? "alert" : "ok"} />
-          <DeviceSourceDialog />
           <Button variant="outline" asChild className="h-auto self-stretch"><Link to="/devices"><Cpu /> Devices</Link></Button>
           <Button variant={editing ? "default" : "outline"} onClick={() => setEditing((e) => !e)} className="h-auto self-stretch">
             {editing ? <Check /> : <LayoutGrid />} {editing ? "Done" : "Customize"}
@@ -290,6 +305,7 @@ function Dashboard() {
             {visible.map((m) => (
               <ModuleShell key={m.id} id={m.id} title={moduleTitle(m)} editing={editing} span={span(m)}
                 onHide={() => setHidden(m.id, true)}
+                onEdit={m.type === "chart" || m.type === "activity" ? undefined : () => setEditTarget(m)}
                 onRemove={m.type === "chart" || m.type === "activity" ? undefined : () => remove(m)}>
                 {renderModule(m)}
               </ModuleShell>
@@ -297,6 +313,13 @@ function Dashboard() {
           </div>
         </SortableContext>
       </DndContext>
+      <AddDeviceDialog
+        trigger={null}
+        open={!!editTarget}
+        onOpenChange={(o) => !o && setEditTarget(null)}
+        initial={editTarget ? { kind: editTarget.type === "sensor" ? editTarget.kind : editTarget.type, name: editTarget.name, room: editTarget.room, source: editTarget.type === "sensor" ? editTarget.source : undefined } : undefined}
+        onAdd={saveEdit}
+      />
       {visible.length === 0 && <p className="text-center text-sm text-muted-foreground">All panels are hidden. Open Customize to bring them back.</p>}
     </main>
   );
