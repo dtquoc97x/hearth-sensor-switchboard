@@ -7,10 +7,11 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SENSOR_META } from "./sensorMeta";
 import { fieldsFor, useDeviceHub } from "@/hooks/use-device-hub";
-import { guessField } from "@/lib/iot";
+import { guessField, type RelaySources } from "@/lib/iot";
+import { DataSourcePicker } from "./DataSourcePicker";
 import type { SensorKind, SensorSource } from "@/lib/modules";
 
-export type NewDevice = { kind: "fan" | "light" | SensorKind; name: string; room: string; source?: SensorSource | undefined };
+export type NewDevice = { kind: "fan" | "light" | SensorKind; name: string; room: string; source?: SensorSource | undefined; sources?: RelaySources | undefined };
 
 const SIM = "sim";
 
@@ -27,18 +28,23 @@ export function AddDeviceDialog({ onAdd, initial, open: openProp, onOpenChange, 
   const [room, setRoom] = useState(initial?.room ?? "");
   const [srcUid, setSrcUid] = useState(initial?.source ? String(initial.source.uid) : SIM);
   const [field, setField] = useState(initial?.source?.field ?? "");
+  const [sources, setSources] = useState<RelaySources>(initial?.sources ?? {});
+  const initialKey = JSON.stringify(initial);
 
   useEffect(() => {
     if (!open) return;
-    setKind(initial?.kind ?? "fan"); setName(initial?.name ?? ""); setRoom(initial?.room ?? "");
-    setSrcUid(initial?.source ? String(initial.source.uid) : SIM); setField(initial?.source?.field ?? "");
-  }, [open, initial]);
+    const value: NewDevice | undefined = initialKey ? JSON.parse(initialKey) : undefined;
+    setKind(value?.kind ?? "fan"); setName(value?.name ?? ""); setRoom(value?.room ?? "");
+    setSrcUid(value?.source ? String(value.source.uid) : SIM); setField(value?.source?.field ?? "");
+    setSources(value?.sources ?? {});
+  }, [open, initialKey]);
 
   const isSensor = kind !== "fan" && kind !== "light";
   const isCustom = kind === "custom";
   const defaultName = kind === "fan" ? "Fan" : kind === "light" ? "Light" : isCustom ? field.trim() || "Any field" : SENSOR_META[kind].label;
   const fields = srcUid === SIM ? [] : fieldsFor(hubState.log, Number(srcUid));
-  const canSubmit = !isCustom || field.trim() !== "";
+  const requiredInputs: (keyof RelaySources)[] = kind === "fan" ? ["temperature"] : kind === "light" ? ["motion", "lux"] : [];
+  const canSubmit = (!isCustom || field.trim() !== "") && requiredInputs.every((key) => !sources[key] || sources[key]?.field.trim());
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -53,7 +59,11 @@ export function AddDeviceDialog({ onAdd, initial, open: openProp, onOpenChange, 
             e.preventDefault();
             if (!canSubmit) return;
             const source = isSensor && srcUid !== SIM && field.trim() ? { uid: Number(srcUid), field: field.trim() } : undefined;
-            onAdd({ kind, name: name.trim() || defaultName, room: room.trim() || "Home", source });
+            const relaySources = Object.fromEntries(requiredInputs.flatMap((key) => {
+              const selected = sources[key];
+              return selected ? [[key, { ...selected, field: selected.field.trim() }]] : [];
+            }));
+            onAdd({ kind, name: name.trim() || defaultName, room: room.trim() || "Home", source, sources: isSensor ? undefined : relaySources });
             setOpen(false);
           }}
         >
@@ -89,6 +99,20 @@ export function AddDeviceDialog({ onAdd, initial, open: openProp, onOpenChange, 
             <Label htmlFor="dev-room">Room</Label>
             <Input id="dev-room" value={room} onChange={(e) => setRoom(e.target.value)} placeholder="e.g. Bedroom" />
           </div>
+          {!isSensor && (
+            <div className="flex flex-col gap-4 border-t pt-4">
+              <h3 className="text-sm font-medium">Auto mode data</h3>
+              {requiredInputs.map((key) => <DataSourcePicker key={key} id={`relay-${key}`}
+                label={key === "lux" ? "Light level from" : key === "motion" ? "Motion from" : "Temperature from"}
+                kind={key} source={sources[key]} devices={hubState.devices} log={hubState.log}
+                onChange={(source) => setSources((previous) => {
+                  const next = { ...previous };
+                  if (source) next[key] = source;
+                  else delete next[key];
+                  return next;
+                })} />)}
+            </div>
+          )}
           {isSensor && (
             <div className="flex flex-col gap-3 rounded-lg border p-3">
               <div className="flex flex-col gap-2">

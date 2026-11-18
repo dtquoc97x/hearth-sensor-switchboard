@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { autoFanState, autoLightState, findFieldValue, guessField, isTruthyField, parseDevicePayloads, powerDraw } from "./iot";
+import { autoFanState, autoLightState, findFieldValue, guessField, isTruthyField, parseDevicePayloads, powerDraw, resolveRelayInputs, relayAutoState } from "./iot";
 
 describe("auto fan rule", () => {
   it("turns on at the threshold", () => {
@@ -22,6 +22,34 @@ describe("auto light rule", () => {
   });
   it("stays off when the room is bright", () => {
     expect(autoLightState(true, 300, 150)).toBe(false);
+  });
+});
+
+describe("per-relay device inputs", () => {
+  const reports = parseDevicePayloads('[{"Uid": 1, "Room Temp": 30, "Presence": true}, {"Uid": 2, "Light level": 3, "Room Temp": 20}]');
+  const fallback = { temperature: 22, motion: false, lux: 300 };
+  it("uses the chosen temperature device and flexible field name for each fan", () => {
+    const hot = resolveRelayInputs({ temperature: { uid: 1, field: "room_temp" } }, reports, fallback);
+    const cool = resolveRelayInputs({ temperature: { uid: 2, field: "ROOM TEMP" } }, reports, fallback);
+    expect(relayAutoState("fan", false, 28, hot)).toBe(true);
+    expect(relayAutoState("fan", true, 28, cool)).toBe(false);
+  });
+  it("gets each required light reading from an independently selected device", () => {
+    const inputs = resolveRelayInputs({ motion: { uid: 1, field: "presence" }, lux: { uid: 2, field: "light_level" } }, reports, fallback);
+    expect(inputs).toEqual({ temperature: 22, motion: true, lux: 3 });
+    expect(relayAutoState("light", false, 150, inputs)).toBe(true);
+  });
+  it("does not fall back to simulation when selected data is missing", () => {
+    const inputs = resolveRelayInputs({ temperature: { uid: 3, field: "Temperature" }, motion: { uid: 1, field: "missing" } }, reports, { temperature: 35, motion: true, lux: 3 });
+    expect(relayAutoState("fan", true, 28, inputs)).toBe(false);
+    expect(relayAutoState("light", true, 150, inputs)).toBe(false);
+  });
+  it("keeps a fan off for a nonnumeric selected temperature", () => {
+    const inputs = resolveRelayInputs({ temperature: { uid: 1, field: "state" } }, parseDevicePayloads('{"Uid":1,"state":"online"}'), { temperature: 35 });
+    expect(relayAutoState("fan", true, 28, inputs)).toBe(false);
+  });
+  it("retains simulation for unassigned required readings", () => {
+    expect(resolveRelayInputs({}, reports, fallback)).toEqual(fallback);
   });
 });
 

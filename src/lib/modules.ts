@@ -1,4 +1,4 @@
-import { autoFanState, autoLightState, lightLux, nextReadings, initialReadings, type Readings, type Relay } from "./iot";
+import { relayAutoState, resolveRelayInputs, lightLux, nextReadings, initialReadings, type DevicePayload, type DataSource, type RelaySources, type Readings, type Relay } from "./iot";
 
 export type SensorKind =
   | "temperature" | "humidity" | "co2" | "pm25" | "lux" | "noise"
@@ -9,9 +9,9 @@ export type SensorKind =
 export const BOOLEAN_SENSORS: SensorKind[] = ["motion", "door", "smoke", "leak"];
 
 type Base = { id: string; hidden: boolean };
-export type RelayModule = Base & { type: "fan" | "light"; name: string; room: string; relay: Relay; threshold: number };
+export type RelayModule = Base & { type: "fan" | "light"; name: string; room: string; relay: Relay; threshold: number; sources?: RelaySources };
 /** Where a sensor tile gets its value: the built-in simulation, or one field of one registered device. */
-export type SensorSource = { uid: number; field: string };
+export type SensorSource = DataSource;
 export type SensorModule = Base & { type: "sensor"; kind: SensorKind; name: string; room: string; source?: SensorSource };
 export type PanelModule = Base & { type: "chart" | "activity" };
 export type Module = RelayModule | SensorModule | PanelModule;
@@ -67,7 +67,7 @@ const flipChance: Record<string, [number, number]> = { motion: [0.18, 0.7], door
 
 export const initialSim = (): SimState => ({ readings: initialReadings, flags: {}, modules: defaultModules(), history: [], log: [] });
 
-export function tick(s: SimState): SimState {
+export function tick(s: SimState, reports: DevicePayload[] = []): SimState {
   const relays = (t: "fan" | "light") => s.modules.filter((m): m is RelayModule => m.type === t).map((m) => m.relay);
   const readings = nextReadings(s.readings, relays("fan"), relays("light"));
   let log = s.log;
@@ -88,11 +88,12 @@ export function tick(s: SimState): SimState {
 
   const modules = s.modules.map((m) => {
     if ((m.type !== "fan" && m.type !== "light") || !m.relay.auto) return m;
-    const on = m.type === "fan" ? autoFanState(m.relay.on, readings.temperature, m.threshold) : autoLightState(motion, ambient, m.threshold);
+    const inputs = resolveRelayInputs(m.sources, reports, { temperature: readings.temperature, motion, lux: ambient });
+    const on = relayAutoState(m.type, m.relay.on, m.threshold, inputs);
     if (on === m.relay.on) return m;
     log = addLog(
       log,
-      m.type === "fan" ? `${m.name} auto ${on ? "on" : "off"} at ${readings.temperature} °C` : `${m.name} auto ${on ? "on" : "off"} (${on ? "motion in the dark" : "no motion / bright"})`,
+      m.type === "fan" ? `${m.name} auto ${on ? "on" : "off"} (${inputs.temperature === undefined ? "no temperature data" : `${inputs.temperature} °C`})` : `${m.name} auto ${on ? "on" : "off"} (${inputs.motion === undefined || inputs.lux === undefined ? "missing input data" : on ? "motion in the dark" : "no motion / bright"})`,
       on ? "on" : "off",
     );
     return { ...m, relay: { ...m.relay, on } };

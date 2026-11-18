@@ -93,6 +93,36 @@ export type FieldValue = number | string;
  *  e.g. {"Uid": 868225062598433, "Light level": 3, "Humidity": 15, "Temperature": 26} */
 export type DevicePayload = { Uid: number; ts?: string; values: Record<string, FieldValue> };
 
+export type DataSource = { uid: number; field: string };
+export type RelaySources = { temperature?: DataSource; motion?: DataSource; lux?: DataSource };
+export type RelayInputs = { temperature?: number | undefined; motion?: boolean | undefined; lux?: number | undefined };
+
+/** Each relay input independently uses its selected device field, or the built-in reading. */
+export function resolveRelayInputs(sources: RelaySources | undefined, reports: DevicePayload[], fallback: RelayInputs): RelayInputs {
+  const read = (key: keyof RelaySources): FieldValue | undefined => {
+    const source = sources?.[key];
+    if (!source) return undefined;
+    for (const report of reports) {
+      if (report.Uid !== source.uid) continue;
+      const value = findFieldValue(report.values, source.field);
+      if (value !== undefined) return value;
+    }
+    return undefined;
+  };
+  const motion = read("motion");
+  return {
+    temperature: sources?.temperature ? asNumber(read("temperature")) : fallback.temperature,
+    lux: sources?.lux ? asNumber(read("lux")) : fallback.lux,
+    motion: sources?.motion ? (motion === undefined ? undefined : isTruthyField(motion)) : fallback.motion,
+  };
+}
+
+/** Missing or nonnumeric required data keeps an automatic relay off, never using unrelated simulation. */
+export function relayAutoState(type: "fan" | "light", currentlyOn: boolean, threshold: number, inputs: RelayInputs): boolean {
+  if (type === "fan") return inputs.temperature === undefined ? false : autoFanState(currentlyOn, inputs.temperature, threshold);
+  return inputs.motion === undefined || inputs.lux === undefined ? false : autoLightState(inputs.motion, inputs.lux, threshold);
+}
+
 /** "Light level", "light_level", "LIGHTLEVEL" and "lightlevel" all name the same field. */
 export const normField = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
