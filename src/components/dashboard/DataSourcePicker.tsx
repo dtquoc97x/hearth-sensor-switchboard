@@ -4,9 +4,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { fieldsFor, type Device, type DeviceLogEntry } from "@/hooks/use-device-hub";
 import { guessField, type DataSource } from "@/lib/iot";
 
-export function DataSourcePicker({ id, label, kind, source, onChange, devices, log }: {
+export function DataSourcePicker({ id, label, kind, source, onChange, devices, log, fallbackLabel = "Built-in simulation" }: {
   id: string; label: string; kind: string; source: DataSource | undefined;
   onChange: (source: DataSource | undefined) => void; devices: Device[]; log: DeviceLogEntry[];
+  fallbackLabel?: string;
 }) {
   const fields = source ? fieldsFor(log, source.uid) : [];
   return (
@@ -17,7 +18,7 @@ export function DataSourcePicker({ id, label, kind, source, onChange, devices, l
       }}>
         <SelectTrigger id={`${id}-device`} className="w-full"><SelectValue /></SelectTrigger>
         <SelectContent>
-          <SelectItem value="sim">Built-in simulation</SelectItem>
+          <SelectItem value="sim">{fallbackLabel}</SelectItem>
           {source && !devices.some((d) => d.uid === source.uid) && <SelectItem value={String(source.uid)}>Unavailable · {source.uid}</SelectItem>}
           {devices.map((d) => <SelectItem key={d.id} value={String(d.uid)}>{d.name} · {d.uid}</SelectItem>)}
         </SelectContent>

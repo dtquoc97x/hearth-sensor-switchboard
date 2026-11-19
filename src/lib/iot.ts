@@ -94,8 +94,8 @@ export type FieldValue = number | string;
 export type DevicePayload = { Uid: number; ts?: string; values: Record<string, FieldValue> };
 
 export type DataSource = { uid: number; field: string };
-export type RelaySources = { temperature?: DataSource; motion?: DataSource; lux?: DataSource };
-export type RelayInputs = { temperature?: number | undefined; motion?: boolean | undefined; lux?: number | undefined };
+export type RelaySources = { temperature?: DataSource; motion?: DataSource; lux?: DataSource; threshold?: DataSource };
+export type RelayInputs = { temperature?: number | undefined; motion?: boolean | undefined; lux?: number | undefined; threshold?: number | undefined };
 
 /** Each relay input independently uses its selected device field, or the built-in reading. */
 export function resolveRelayInputs(sources: RelaySources | undefined, reports: DevicePayload[], fallback: RelayInputs): RelayInputs {
@@ -114,13 +114,16 @@ export function resolveRelayInputs(sources: RelaySources | undefined, reports: D
     temperature: sources?.temperature ? asNumber(read("temperature")) : fallback.temperature,
     lux: sources?.lux ? asNumber(read("lux")) : fallback.lux,
     motion: sources?.motion ? (motion === undefined ? undefined : isTruthyField(motion)) : fallback.motion,
+    ...(sources?.threshold ? { threshold: asNumber(read("threshold")) } : {}),
   };
 }
 
 /** Missing or nonnumeric required data keeps an automatic relay off, never using unrelated simulation. */
 export function relayAutoState(type: "fan" | "light", currentlyOn: boolean, threshold: number, inputs: RelayInputs): boolean {
-  if (type === "fan") return inputs.temperature === undefined ? false : autoFanState(currentlyOn, inputs.temperature, threshold);
-  return inputs.motion === undefined || inputs.lux === undefined ? false : autoLightState(inputs.motion, inputs.lux, threshold);
+  const limit = "threshold" in inputs ? inputs.threshold : threshold;
+  if (limit === undefined || !Number.isFinite(limit)) return false;
+  if (type === "fan") return inputs.temperature === undefined ? false : autoFanState(currentlyOn, inputs.temperature, limit);
+  return inputs.motion === undefined || inputs.lux === undefined ? false : autoLightState(inputs.motion, inputs.lux, limit);
 }
 
 /** "Light level", "light_level", "LIGHTLEVEL" and "lightlevel" all name the same field. */

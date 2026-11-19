@@ -13,7 +13,7 @@ import { AddDeviceDialog, type NewDevice } from "@/components/dashboard/AddDevic
 import { latestValue, useDeviceHub } from "@/hooks/use-device-hub";
 import { SENSOR_META } from "@/components/dashboard/sensorMeta";
 import { cn } from "@/lib/utils";
-import { fanWatts, isNumericText, isTruthyField, lightWatts, type Relay, type DataSource } from "@/lib/iot";
+import { fanWatts, isNumericText, isTruthyField, lightWatts, resolveRelayInputs, type Relay, type DataSource } from "@/lib/iot";
 import {
   BOOLEAN_SENSORS, addLog, clockNow, defaultModules, initialSim, moduleTitle, parseSavedModules, sensorOffset, tick,
   type Module, type RelayModule, type SensorModule, type SimState,
@@ -45,15 +45,15 @@ function Dashboard() {
   const [s, setS] = useState<SimState>(initialSim);
   const [clock, setClock] = useState("");
   const [editing, setEditing] = useState(false);
-  const loaded = useRef(false);
+  const [loaded, setLoaded] = useState(false);
   const deviceHub = useDeviceHub();
   const reports = useRef(deviceHub.log);
   useEffect(() => { reports.current = deviceHub.log; }, [deviceHub.log]);
 
   useEffect(() => {
     const saved = parseSavedModules(localStorage.getItem(STORAGE_KEY));
-    loaded.current = true;
     setS((p) => ({ ...p, modules: saved ?? p.modules, log: addLog(p.log, "Hub connected", "on") }));
+    setLoaded(true);
     const id = setInterval(() => {
       setS((previous) => tick(previous, reports.current));
       setClock(clockNow());
@@ -63,8 +63,8 @@ function Dashboard() {
   }, []);
 
   useEffect(() => {
-    if (loaded.current) localStorage.setItem(STORAGE_KEY, JSON.stringify(s.modules));
-  }, [s.modules]);
+    if (loaded) localStorage.setItem(STORAGE_KEY, JSON.stringify(s.modules));
+  }, [s.modules, loaded]);
 
   const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const [editTarget, setEditTarget] = useState<RelayModule | SensorModule | null>(null);
@@ -155,13 +155,14 @@ function Dashboard() {
       );
     }
     if (m.type === "fan") {
+      const threshold = m.sources?.threshold ? resolveRelayInputs(m.sources, deviceHub.log, {}).threshold : m.threshold;
       return (
         <RelayCard
           title={m.name}
           channel={`Relay · ${m.room}`}
           relay={m.relay}
           watts={fanWatts(m.relay)}
-          autoLabel={`Runs when temperature reaches ${m.threshold} °C`}
+          autoLabel={threshold === undefined ? "Waiting for threshold data · auto stays off" : `Runs when temperature reaches ${threshold} °C`}
           onToggle={() => setRelay(m, { on: !m.relay.on }, `${m.name} switched ${m.relay.on ? "off" : "on"} manually`)}
           onAutoChange={(auto) => setRelay(m, { auto }, `${m.name} auto mode ${auto ? "enabled" : "disabled"}`)}
           visual={
@@ -189,20 +190,23 @@ function Dashboard() {
               ))}
             </div>
           </div>
-          <ThresholdSlider label="Auto threshold" unit="°C" min={22} max={34} step={0.5} value={m.threshold}
-            onChange={(v) => update(m.id, (x) => ({ ...(x as RelayModule), threshold: v }))} />
+          {m.sources?.threshold
+            ? <p className="break-words text-sm text-muted-foreground">{sourceSummary("Threshold", m.sources.threshold)}</p>
+            : <ThresholdSlider label="Auto threshold" unit="°C" min={22} max={34} step={0.5} value={m.threshold}
+              onChange={(v) => update(m.id, (x) => ({ ...(x as RelayModule), threshold: v }))} />}
           <p className="break-words text-xs text-muted-foreground">{sourceSummary("Temperature", m.sources?.temperature)}</p>
         </RelayCard>
       );
     }
     if (m.type === "light") {
+      const threshold = m.sources?.threshold ? resolveRelayInputs(m.sources, deviceHub.log, {}).threshold : m.threshold;
       return (
         <RelayCard
           title={m.name}
           channel={`Relay · ${m.room}`}
           relay={m.relay}
           watts={lightWatts(m.relay)}
-          autoLabel={`Turns on with motion when darker than ${m.threshold} lx`}
+          autoLabel={threshold === undefined ? "Waiting for threshold data · auto stays off" : `Turns on with motion when darker than ${threshold} lx`}
           onToggle={() => setRelay(m, { on: !m.relay.on }, `${m.name} switched ${m.relay.on ? "off" : "on"} manually`)}
           onAutoChange={(auto) => setRelay(m, { auto }, `${m.name} auto mode ${auto ? "enabled" : "disabled"}`)}
           visual={
@@ -213,8 +217,10 @@ function Dashboard() {
           }
         >
           <ThresholdSlider label="Brightness" unit="%" min={5} max={100} step={5} value={m.relay.level} onChange={(v) => setRelay(m, { level: v })} />
-          <ThresholdSlider label="Darkness threshold" unit="lx" min={20} max={400} step={10} value={m.threshold}
-            onChange={(v) => update(m.id, (x) => ({ ...(x as RelayModule), threshold: v }))} />
+          {m.sources?.threshold
+            ? <p className="break-words text-sm text-muted-foreground">{sourceSummary("Threshold", m.sources.threshold)}</p>
+            : <ThresholdSlider label="Darkness threshold" unit="lx" min={20} max={400} step={10} value={m.threshold}
+              onChange={(v) => update(m.id, (x) => ({ ...(x as RelayModule), threshold: v }))} />}
           <div className="flex flex-col gap-1 break-words text-xs text-muted-foreground">
             <p>{sourceSummary("Motion", m.sources?.motion)}</p>
             <p>{sourceSummary("Light level", m.sources?.lux)}</p>

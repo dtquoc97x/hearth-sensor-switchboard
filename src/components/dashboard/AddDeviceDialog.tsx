@@ -51,7 +51,7 @@ export function AddDeviceDialog({ onAdd, initial, open: openProp, onOpenChange, 
       {trigger !== null && (
         <DialogTrigger asChild>{trigger ?? <Button size="sm"><Plus /> Add device</Button>}</DialogTrigger>
       )}
-      <DialogContent>
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <DialogHeader><DialogTitle>{initial ? `Edit ${initial.name}` : "Add a device"}</DialogTitle></DialogHeader>
         <form
           className="flex flex-col gap-4"
@@ -59,7 +59,7 @@ export function AddDeviceDialog({ onAdd, initial, open: openProp, onOpenChange, 
             e.preventDefault();
             if (!canSubmit) return;
             const source = isSensor && srcUid !== SIM && field.trim() ? { uid: Number(srcUid), field: field.trim() } : undefined;
-            const relaySources = Object.fromEntries(requiredInputs.flatMap((key) => {
+            const relaySources = Object.fromEntries([...requiredInputs, "threshold" as const].flatMap((key) => {
               const selected = sources[key];
               return selected ? [[key, { ...selected, field: selected.field.trim() }]] : [];
             }));
@@ -111,6 +111,14 @@ export function AddDeviceDialog({ onAdd, initial, open: openProp, onOpenChange, 
                   else delete next[key];
                   return next;
                 })} />)}
+              <DataSourcePicker id="relay-threshold" label="Threshold from" kind="threshold" source={sources.threshold}
+                fallbackLabel="Entered number" devices={hubState.devices} log={hubState.log}
+                onChange={(source) => setSources((previous) => {
+                  const next = { ...previous };
+                  if (source) next.threshold = source;
+                  else delete next.threshold;
+                  return next;
+                })} />
             </div>
           )}
           {isSensor && (
@@ -144,7 +152,7 @@ export function AddDeviceDialog({ onAdd, initial, open: openProp, onOpenChange, 
               {isCustom && srcUid === SIM && <p className="text-xs text-muted-foreground">Pick a device to read this field from.</p>}
             </div>
           )}
-          <DialogFooter><Button type="submit" disabled={!canSubmit}>{initial ? "Save" : "Add"}</Button></DialogFooter>
+          <DialogFooter><Button type="submit" disabled={!canSubmit || (!isSensor && !!sources.threshold && !sources.threshold.field.trim())}>{initial ? "Save" : "Add"}</Button></DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

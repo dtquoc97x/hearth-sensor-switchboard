@@ -63,6 +63,32 @@ describe("power draw", () => {
   });
 });
 
+describe("device-sourced relay thresholds", () => {
+  it("compares fan readings against a chosen device threshold", () => {
+    const reports = parseDevicePayloads('[{"Uid":1,"Temperature":30},{"Uid":2,"Fan limit":32}]');
+    const inputs = resolveRelayInputs({ temperature: { uid: 1, field: "temperature" }, threshold: { uid: 2, field: "FAN_LIMIT" } }, reports, {});
+    expect(inputs.threshold).toBe(32);
+    expect(relayAutoState("fan", false, 28, inputs)).toBe(false);
+    expect(relayAutoState("fan", false, 28, { ...inputs, threshold: 29 })).toBe(true);
+  });
+  it("compares light readings against the device threshold including zero", () => {
+    const inputs = resolveRelayInputs({ threshold: { uid: 2, field: "limit" } }, parseDevicePayloads('{"Uid":2,"limit":0}'), { motion: true, lux: 3 });
+    expect(inputs.threshold).toBe(0);
+    expect(relayAutoState("light", false, 150, inputs)).toBe(false);
+    expect(relayAutoState("light", false, 150, { ...inputs, threshold: 4 })).toBe(true);
+  });
+  it("keeps relays off if a chosen threshold is missing or not numeric", () => {
+    for (const reports of [[], parseDevicePayloads('{"Uid":2,"limit":"online"}')]) {
+      const inputs = resolveRelayInputs({ threshold: { uid: 2, field: "limit" } }, reports, { temperature: 35, motion: true, lux: 3 });
+      expect(relayAutoState("fan", true, 28, inputs)).toBe(false);
+      expect(relayAutoState("light", true, 150, inputs)).toBe(false);
+    }
+  });
+  it("uses the entered threshold when no threshold source is chosen", () => {
+    expect(relayAutoState("fan", false, 28, resolveRelayInputs({}, [], { temperature: 30 }))).toBe(true);
+  });
+});
+
 describe("device payload", () => {
   it("parses the documented format", () => {
     expect(parseDevicePayloads('{"Uid": 868225062598432, "Temperature": 25, "Humidity": 15}')).toEqual([{ Uid: 868225062598432, values: { Temperature: 25, Humidity: 15 } }]);
