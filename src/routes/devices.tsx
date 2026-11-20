@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { hub, latestFor, useDeviceHub } from "@/hooks/use-device-hub";
-import { parseDevicePayloads } from "@/lib/iot";
+import { parseDevicePayloads, toUid, type DeviceUid } from "@/lib/iot";
 
 export const Route = createFileRoute("/devices")({
   head: () => ({
@@ -28,8 +28,8 @@ function DevicesPage() {
   const [uid, setUid] = useState("");
   const [raw, setRaw] = useState('{"Uid": 868225062598433, "Light level": 3, "Humidity": 15, "Temperature": 26},\n{"Uid": 868225062598432, "Temperature": 25, "Humidity": 15, "ts": "2026-11-17T10:00:00"}');
   const [err, setErr] = useState("");
-  const [filter, setFilter] = useState<number | "all">("all");
-  const nameOf = (u: number) => h.devices.find((d) => d.uid === u)?.name ?? "Unknown device";
+  const [filter, setFilter] = useState<DeviceUid | "all">("all");
+  const nameOf = (u: DeviceUid) => h.devices.find((d) => d.uid === u)?.name ?? "Unknown device";
   const rows = filter === "all" ? h.log : h.log.filter((e) => e.Uid === filter);
 
   return (
@@ -46,13 +46,13 @@ function DevicesPage() {
           <h2 className="text-lg font-semibold">Registered devices</h2>
           <form className="flex flex-wrap items-end gap-3" onSubmit={(e) => {
             e.preventDefault();
-            const n = Number(uid.trim());
-            if (!name.trim() || !uid.trim() || !Number.isFinite(n)) return setErr("Enter a name and a numeric UID.");
+            if (!name.trim() || !uid.trim()) return setErr("Enter a name and a UID.");
+            const n = toUid(uid);
             if (h.devices.some((d) => d.uid === n)) return setErr("A device with this UID already exists.");
             hub.addDevice(name.trim(), n); setName(""); setUid(""); setErr("");
           }}>
             <div className="flex flex-1 flex-col gap-2"><Label htmlFor="n">Name</Label><Input id="n" value={name} onChange={(e) => setName(e.target.value)} placeholder="Bedroom node" /></div>
-            <div className="flex flex-1 flex-col gap-2"><Label htmlFor="u">UID</Label><Input id="u" inputMode="numeric" value={uid} onChange={(e) => setUid(e.target.value)} placeholder="868225062598432" /></div>
+            <div className="flex flex-1 flex-col gap-2"><Label htmlFor="u">UID</Label><Input id="u" value={uid} onChange={(e) => setUid(e.target.value)} placeholder="868225062598432" /></div>
             <Button type="submit"><Plus /> Add</Button>
           </form>
           {err && <p className="text-sm text-destructive">{err}</p>}
@@ -97,7 +97,7 @@ function DevicesPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Data log</h2>
           <div className="flex items-center gap-2">
-            <select value={String(filter)} onChange={(e) => setFilter(e.target.value === "all" ? "all" : Number(e.target.value))}
+            <select value={String(filter)} onChange={(e) => setFilter(e.target.value === "all" ? "all" : toUid(e.target.value))}
               className="rounded-md border bg-background px-2 py-1.5 text-sm">
               <option value="all">All devices</option>
               {h.devices.map((d) => <option key={d.id} value={d.uid}>{d.name}</option>)}

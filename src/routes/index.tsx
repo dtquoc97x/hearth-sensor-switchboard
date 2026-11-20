@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Check, Cpu, Eye, Fan, LayoutGrid, Lightbulb, Radio, RotateCcw } from "lucide-react";
+import { Check, Cpu, Eye, Fan, LayoutGrid, Lightbulb, Radio, RotateCcw, Server } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
@@ -11,6 +11,7 @@ import { RelayCard } from "@/components/dashboard/RelayCard";
 import { ModuleShell } from "@/components/dashboard/ModuleShell";
 import { AddDeviceDialog, type NewDevice } from "@/components/dashboard/AddDeviceDialog";
 import { latestValue, useDeviceHub } from "@/hooks/use-device-hub";
+import { getConn, sendRelay, useServerConn } from "@/lib/server-api";
 import { SENSOR_META } from "@/components/dashboard/sensorMeta";
 import { cn } from "@/lib/utils";
 import { fanWatts, isNumericText, isTruthyField, lightWatts, resolveRelayInputs, type Relay, type DataSource } from "@/lib/iot";
@@ -47,6 +48,7 @@ function Dashboard() {
   const [editing, setEditing] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const deviceHub = useDeviceHub();
+  const server = useServerConn();
   const reports = useRef(deviceHub.log);
   useEffect(() => { reports.current = deviceHub.log; }, [deviceHub.log]);
 
@@ -61,6 +63,23 @@ function Dashboard() {
     setClock(clockNow());
     return () => clearInterval(id);
   }, []);
+
+  // Send every on/off change (manual or automatic) of a linked panel to the real relay on the home server.
+  const sentRelay = useRef<Record<string, string>>({});
+  useEffect(() => {
+    if (!loaded) return;
+    for (const m of s.modules) {
+      if ((m.type !== "fan" && m.type !== "light") || !m.control) continue;
+      const key = `${m.control.uid}#${m.control.channel}#${m.relay.on}`;
+      const first = !(m.id in sentRelay.current);
+      if (sentRelay.current[m.id] === key) continue;
+      sentRelay.current[m.id] = key;
+      if (first || !getConn().token) continue;
+      sendRelay(m.control.uid, m.control.channel, m.relay.on)
+        .then(() => setS((p) => ({ ...p, log: addLog(p.log, `${m.name}: relay command sent (${m.relay.on ? "on" : "off"})`, m.relay.on ? "on" : "off") })))
+        .catch((err: Error) => setS((p) => ({ ...p, log: addLog(p.log, `${m.name}: relay command failed — ${err.message}`, "alert") })));
+    }
+  }, [s.modules, loaded]);
 
   useEffect(() => {
     if (loaded) localStorage.setItem(STORAGE_KEY, JSON.stringify(s.modules));
@@ -87,7 +106,7 @@ function Dashboard() {
     const id = `${d.kind}-${crypto.randomUUID().slice(0, 8)}`;
     const m: Module =
       d.kind === "fan" || d.kind === "light"
-        ? { id, type: d.kind, name: d.name, room: d.room, hidden: false, sources: d.sources ?? {}, threshold: d.kind === "fan" ? 28 : 150, relay: { on: false, auto: false, level: d.kind === "fan" ? 2 : 70 } }
+        ? { id, type: d.kind, name: d.name, room: d.room, hidden: false, sources: d.sources ?? {}, ...(d.control ? { control: d.control } : {}), threshold: d.kind === "fan" ? 28 : 150, relay: { on: false, auto: false, level: d.kind === "fan" ? 2 : 70 } }
         : { id, type: "sensor", kind: d.kind, name: d.name, room: d.room, hidden: false, ...(d.source ? { source: d.source } : {}) };
     setS((p) => ({ ...p, modules: [...p.modules, m], log: addLog(p.log, `${d.name} added · ${d.room}`, "on") }));
   };
@@ -100,7 +119,7 @@ function Dashboard() {
         if (d.source) next.source = d.source;
         else delete next.source;
       }
-      if (next.type === "fan" || next.type === "light") next.sources = d.sources ?? {};
+      if (next.type === "fan" || next.type === "light") { next.sources = d.sources ?? {}; if (d.control) next.control = d.control; else delete next.control; }
       return next;
     }, [`${d.name} updated`, "on"]);
   };
@@ -285,7 +304,7 @@ function Dashboard() {
         <div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <span className="size-2 rounded-full bg-signal animate-pulse-dot" />
-            <span className="readout">HUB-01 · live · {online} devices</span>
+            <span className="readout">HUB-01 · {online} devices · server {server.status === "live" ? "live" : server.conn.token ? server.status : "not connected"}</span>
           </div>
           <h1 className="mt-2 text-4xl font-bold tracking-tight md:text-5xl">Homebase</h1>
         </div>
@@ -294,6 +313,7 @@ function Dashboard() {
           <Stat label="Total load" value={`${r.power} W`} />
           <Stat label="Alerts" value={String(alerts)} tone={alerts ? "alert" : "ok"} />
           <Button variant="outline" asChild className="h-auto self-stretch"><Link to="/devices"><Cpu /> Devices</Link></Button>
+          <Button variant="outline" asChild className="h-auto self-stretch"><Link to="/server"><Server /> Server</Link></Button>
           <Button variant={editing ? "default" : "outline"} onClick={() => setEditing((e) => !e)} className="h-auto self-stretch">
             {editing ? <Check /> : <LayoutGrid />} {editing ? "Done" : "Customize"}
           </Button>
@@ -343,7 +363,7 @@ function Dashboard() {
         trigger={null}
         open={!!editTarget}
         onOpenChange={(o) => !o && setEditTarget(null)}
-        initial={editTarget ? { kind: editTarget.type === "sensor" ? editTarget.kind : editTarget.type, name: editTarget.name, room: editTarget.room, source: editTarget.type === "sensor" ? editTarget.source : undefined, sources: editTarget.type !== "sensor" ? editTarget.sources : undefined } : undefined}
+        initial={editTarget ? { kind: editTarget.type === "sensor" ? editTarget.kind : editTarget.type, name: editTarget.name, room: editTarget.room, source: editTarget.type === "sensor" ? editTarget.source : undefined, sources: editTarget.type !== "sensor" ? editTarget.sources : undefined, control: editTarget.type !== "sensor" ? editTarget.control : undefined } : undefined}
         onAdd={saveEdit}
       />
       {visible.length === 0 && <p className="text-center text-sm text-muted-foreground">All panels are hidden. Open Customize to bring them back.</p>}

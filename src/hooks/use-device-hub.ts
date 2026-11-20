@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
-import { findFieldValue, simulateDevicePayload, type DevicePayload, type FieldValue } from "@/lib/iot";
+import { findFieldValue, simulateDevicePayload, type DevicePayload, type DeviceUid, type FieldValue } from "@/lib/iot";
 
-export type Device = { id: string; name: string; uid: number; simulate: boolean };
+export type Device = { id: string; name: string; uid: DeviceUid; simulate: boolean; remote?: boolean };
 export type DeviceLogEntry = DevicePayload & { id: string; time: string };
 type Hub = { devices: Device[]; log: DeviceLogEntry[] };
 
@@ -31,10 +31,10 @@ function set(fn: (h: Hub) => Hub) {
 const subscribe = (l: () => void) => { load(); listeners.add(l); return () => listeners.delete(l); };
 
 /** Every reading field a device has reported so far. */
-export const fieldsFor = (log: DeviceLogEntry[], uid: number) =>
+export const fieldsFor = (log: DeviceLogEntry[], uid: DeviceUid) =>
   [...new Set(log.filter((e) => e.Uid === uid).flatMap((e) => Object.keys(e.values)))];
 /** Latest value of one field from one device, whatever the field is actually called in the payload. */
-export const latestValue = (log: DeviceLogEntry[], uid: number, field: string): FieldValue | undefined => {
+export const latestValue = (log: DeviceLogEntry[], uid: DeviceUid, field: string): FieldValue | undefined => {
   for (const e of log) {
     if (e.Uid !== uid) continue;
     const v = findFieldValue(e.values, field);
@@ -42,10 +42,10 @@ export const latestValue = (log: DeviceLogEntry[], uid: number, field: string): 
   }
   return undefined;
 };
-export const latestFor = (log: DeviceLogEntry[], uid: number) => log.find((e) => e.Uid === uid);
+export const latestFor = (log: DeviceLogEntry[], uid: DeviceUid) => log.find((e) => e.Uid === uid);
 
 export const hub = {
-  addDevice: (name: string, uid: number) =>
+  addDevice: (name: string, uid: DeviceUid) =>
     set((h) => ({ ...h, devices: [...h.devices, { id: `d-${crypto.randomUUID().slice(0, 8)}`, name, uid, simulate: true }] })),
   removeDevice: (id: string) =>
     set((h) => {
@@ -54,6 +54,17 @@ export const hub = {
   toggleSimulate: (id: string) => set((h) => ({ ...h, devices: h.devices.map((d) => (d.id === id ? { ...d, simulate: !d.simulate } : d)) })),
   pushPayload: (p: DevicePayload) =>
     set((h) => ({ ...h, log: [{ ...p, id: crypto.randomUUID(), time: new Date().toLocaleTimeString([], { hour12: false }) }, ...h.log].slice(0, MAX_LOG) })),
+  /** Add or rename devices registered on the home server; their data comes from the server, not simulation. */
+  syncRemote: (list: { uid: DeviceUid; name: string }[]) =>
+    set((h) => {
+      const devices = [...h.devices];
+      for (const r of list) {
+        const i = devices.findIndex((d) => d.uid === r.uid);
+        if (i >= 0) devices[i] = { ...devices[i]!, name: r.name, remote: true, simulate: false };
+        else devices.push({ id: `d-${crypto.randomUUID().slice(0, 8)}`, name: r.name, uid: r.uid, simulate: false, remote: true });
+      }
+      return { ...h, devices };
+    }),
   clearLog: () => set((h) => ({ ...h, log: [] })),
 };
 

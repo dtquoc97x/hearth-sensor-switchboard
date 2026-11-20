@@ -2,7 +2,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { fieldsFor, type Device, type DeviceLogEntry } from "@/hooks/use-device-hub";
-import { guessField, type DataSource } from "@/lib/iot";
+import { guessField, toUid, type DataSource } from "@/lib/iot";
 
 export function DataSourcePicker({ id, label, kind, source, onChange, devices, log, fallbackLabel = "Built-in simulation" }: {
   id: string; label: string; kind: string; source: DataSource | undefined;
@@ -14,7 +14,7 @@ export function DataSourcePicker({ id, label, kind, source, onChange, devices, l
     <div className="flex min-w-0 flex-col gap-2">
       <Label htmlFor={`${id}-device`}>{label}</Label>
       <Select value={source ? String(source.uid) : "sim"} onValueChange={(value) => {
-        onChange(value === "sim" ? undefined : { uid: Number(value), field: guessField(kind, fieldsFor(log, Number(value))) });
+        onChange(value === "sim" ? undefined : { uid: toUid(value), field: guessField(kind, fieldsFor(log, toUid(value))) });
       }}>
         <SelectTrigger id={`${id}-device`} className="w-full"><SelectValue /></SelectTrigger>
         <SelectContent>

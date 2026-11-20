@@ -91,9 +91,13 @@ export type FieldValue = number | string;
 
 /** Payload sent by a field device. Only a Uid is required; every other field is a reading with any name.
  *  e.g. {"Uid": 868225062598433, "Light level": 3, "Humidity": 15, "Temperature": 26} */
-export type DevicePayload = { Uid: number; ts?: string; values: Record<string, FieldValue> };
+/** Device IDs may be numbers (868225062598432) or text ("DEVICE_001"). */
+export type DeviceUid = number | string;
+/** Numeric-looking text becomes a number so "42" and 42 name the same device. */
+export const toUid = (s: string | number): DeviceUid => typeof s === "number" ? s : isNumericText(s) ? Number(s) : s.trim();
+export type DevicePayload = { Uid: DeviceUid; ts?: string; values: Record<string, FieldValue> };
 
-export type DataSource = { uid: number; field: string };
+export type DataSource = { uid: DeviceUid; field: string };
 export type RelaySources = { temperature?: DataSource; motion?: DataSource; lux?: DataSource; threshold?: DataSource };
 export type RelayInputs = { temperature?: number | undefined; motion?: boolean | undefined; lux?: number | undefined; threshold?: number | undefined };
 
@@ -193,8 +197,8 @@ function toPayload(o: unknown): DevicePayload | null {
   const uidKey = Object.keys(rec).find((k) => normField(k) === "uid");
   if (!uidKey) return null;
   const rawUid = rec[uidKey];
-  const uid = typeof rawUid === "string" && rawUid.trim() !== "" ? Number(rawUid) : rawUid;
-  if (typeof uid !== "number" || !Number.isFinite(uid)) return null;
+  if (typeof rawUid === "string" ? rawUid.trim() === "" : typeof rawUid !== "number" || !Number.isFinite(rawUid)) return null;
+  const uid = toUid(rawUid as string | number);
   const tsKey = Object.keys(rec).find((k) => normField(k) === "ts");
   const values: Record<string, FieldValue> = {};
   for (const [k, v] of Object.entries(rec)) {
@@ -219,7 +223,7 @@ export function parseDevicePayloads(raw: string): DevicePayload[] {
 }
 
 /** Simulated next payload for a device, drifting from its previous reading. */
-export function simulateDevicePayload(uid: number, prev?: DevicePayload): DevicePayload {
+export function simulateDevicePayload(uid: DeviceUid, prev?: DevicePayload): DevicePayload {
   const prevValues = prev?.values ?? {};
   const t = asNumber(findFieldValue(prevValues, "Temperature")) ?? 24 + Math.random() * 4;
   const h = asNumber(findFieldValue(prevValues, "Humidity")) ?? 40 + Math.random() * 20;
@@ -233,4 +237,28 @@ export function simulateDevicePayload(uid: number, prev?: DevicePayload): Device
       "Light level": Math.round(clamp(drift(l, 30), 5, 900)),
     },
   };
+}
+
+/** Turn a live event from the home server (snapshot or telemetry) into a device report, or null if it carries no readings. */
+export function serverEventToPayload(event: unknown): DevicePayload | null {
+  if (!event || typeof event !== "object") return null;
+  const e = event as Record<string, unknown>;
+  const body = (e["data"] && typeof e["data"] === "object" && !Array.isArray(e["data"]) ? { ...e, ...(e["data"] as object) } : e) as Record<string, unknown>;
+  const rawUid = body["device_uid"] ?? body["uid"] ?? body["Uid"];
+  if ((typeof rawUid !== "string" || !rawUid.trim()) && typeof rawUid !== "number") return null;
+  const flat: Record<string, unknown> = {};
+  const name = body["entity_name"] ?? body["entity"];
+  if (typeof name === "string" && "value" in body) flat[name] = body["value"];
+  const entities = body["entities"] ?? body["values"];
+  if (Array.isArray(entities)) {
+    for (const x of entities) {
+      if (!x || typeof x !== "object") continue;
+      const r = x as Record<string, unknown>;
+      const n = r["name"] ?? r["entity_name"] ?? r["entity"];
+      if (typeof n === "string") flat[n] = r["value"] ?? r["current_value"] ?? r["last_value"];
+    }
+  } else if (entities && typeof entities === "object") Object.assign(flat, entities);
+  const ts = body["ts"];
+  const p = toPayload({ ...flat, Uid: rawUid, ...(ts != null ? { ts } : {}) });
+  return p && Object.keys(p.values).length ? p : null;
 }

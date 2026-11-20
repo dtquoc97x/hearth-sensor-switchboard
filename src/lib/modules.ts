@@ -1,4 +1,4 @@
-import { relayAutoState, resolveRelayInputs, lightLux, nextReadings, initialReadings, type DevicePayload, type DataSource, type RelaySources, type Readings, type Relay } from "./iot";
+import { relayAutoState, resolveRelayInputs, lightLux, nextReadings, initialReadings, type DevicePayload, type DataSource, type DeviceUid, type RelaySources, type Readings, type Relay } from "./iot";
 
 export type SensorKind =
   | "temperature" | "humidity" | "co2" | "pm25" | "lux" | "noise"
@@ -9,7 +9,10 @@ export type SensorKind =
 export const BOOLEAN_SENSORS: SensorKind[] = ["motion", "door", "smoke", "leak"];
 
 type Base = { id: string; hidden: boolean };
-export type RelayModule = Base & { type: "fan" | "light"; name: string; room: string; relay: Relay; threshold: number; sources?: RelaySources };
+export type RelayModule = Base & { type: "fan" | "light"; name: string; room: string; relay: Relay; threshold: number; sources?: RelaySources;
+  /** Real relay on the home server that follows this panel's on/off state. */
+  control?: RelayControl };
+export type RelayControl = { uid: DeviceUid; channel: number };
 /** Where a sensor tile gets its value: the built-in simulation, or one field of one registered device. */
 export type SensorSource = DataSource;
 export type SensorModule = Base & { type: "sensor"; kind: SensorKind; name: string; room: string; source?: SensorSource };

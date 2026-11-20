@@ -137,3 +137,21 @@ describe("data with any field names", () => {
     expect(isTruthyField(12)).toBe(true);
   });
 });
+
+import { serverEventToPayload, parseDevicePayloads as parseP2 } from "./iot";
+describe("home server events", () => {
+  it("reads a single telemetry event", () => {
+    expect(serverEventToPayload({ type: "telemetry", device_uid: "DEVICE_001", entity_name: "temperature", value: 28.5, ts: "t" }))
+      .toEqual({ Uid: "DEVICE_001", ts: "t", values: { temperature: 28.5 } });
+  });
+  it("reads a snapshot with an entity list", () => {
+    expect(serverEventToPayload({ type: "snapshot", device_uid: "FAN_1", entities: [{ name: "relay_1", value: true }, { name: "humidity", value: 60 }] })?.values)
+      .toEqual({ relay_1: 1, humidity: 60 });
+  });
+  it("ignores events without readings", () => {
+    expect(serverEventToPayload({ type: "device_status", device_uid: "X", status: "online" })).toBeNull();
+  });
+  it("accepts text device IDs in pasted data", () => {
+    expect(parseP2('{"Uid": "DEVICE_001", "Temperature": 25}')[0]?.Uid).toBe("DEVICE_001");
+  });
+});
