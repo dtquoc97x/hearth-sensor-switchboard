@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, redirect, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, Cpu, Eye, Fan, LayoutGrid, Lightbulb, Radio, RotateCcw, Server } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -16,7 +16,7 @@ import { SENSOR_META } from "@/components/dashboard/sensorMeta";
 import { cn } from "@/lib/utils";
 import { fanWatts, isNumericText, isTruthyField, lightWatts, resolveRelayInputs, type Relay, type DataSource } from "@/lib/iot";
 import {
-  BOOLEAN_SENSORS, addLog, clockNow, defaultModules, initialSim, moduleTitle, parseSavedModules, sensorOffset, tick,
+  BOOLEAN_SENSORS, addLog, clockNow, defaultModules, initialSim, moduleTitle, parseSavedModules, sensorOffset, tick, moduleActivity,
   type Module, type RelayModule, type SensorModule, type SimState,
 } from "@/lib/modules";
 
@@ -39,6 +39,12 @@ export const Route = createFileRoute("/")({
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
+
+  beforeLoad: () => {
+    if (getConn().token) return;
+    throw redirect({ to: "/server" });
+  },
+
   component: Dashboard,
 });
 
@@ -356,6 +362,10 @@ function Dashboard() {
                 {renderModule(m)}
               </ModuleShell>
             ))}
+          </div>
+
+          <div className="h-[200px] shrink-0 overflow-auto">
+            {renderModule(moduleActivity())}
           </div>
         </SortableContext>
       </DndContext>

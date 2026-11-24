@@ -57,10 +57,21 @@ export const logout = () => setConn({ url: getConn().url });
 export type ServerDevice = { uid: string; name: string; status?: string; last_seen_at?: string | null };
 export const listDevices = () => call<ServerDevice[]>("/api/devices");
 
+export const registerDevice = (uid: DeviceUid, name: string) =>
+  call<{ uid: string; name: string }>("/api/devices", { method: "POST", body: JSON.stringify({ uid, name }) });
+
+export const deleteDevice = (uid: DeviceUid) =>
+  call<{ uid: string; name: string }>(`/api/devices/${encodeURIComponent(String(uid))}`, { method: "DELETE" });
+
 /** Ask the server to switch one relay channel on a device. Needs the operator role. */
 export const sendRelay = (uid: DeviceUid, channel: number, state: boolean) =>
   call<{ command_id: string; status: string }>(`/api/devices/${encodeURIComponent(String(uid))}/commands`, {
     method: "POST", body: JSON.stringify({ command: "set_relay", parameters: { channel, state } }),
+  });
+
+export const sendCommand = (uid: DeviceUid, command: string, parameters?: Record<string, unknown>) =>
+  call<{ command_id: string; status: string }>(`/api/devices/${encodeURIComponent(String(uid))}/commands`, {
+    method: "POST", body: JSON.stringify({ command, parameters }),
   });
 
 export const wsUrl = (c: ServerConn) => `${c.url.replace(/^http/, "ws")}/ws?token=${encodeURIComponent(c.token ?? "")}`;

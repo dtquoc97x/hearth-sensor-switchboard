@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { ArrowLeft, LogIn, LogOut, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -30,7 +30,7 @@ function ServerPage() {
   const [busy, setBusy] = useState(false);
   useEffect(() => setUrl(conn.url), [conn.url]);
   const signedIn = !!conn.token;
-
+  const navigate = useNavigate();
   const sync = async () => {
     setBusy(true);
     try { const list = await listDevices(); hub.syncRemote(list.map((d) => ({ uid: d.uid, name: d.name }))); setMsg(`${list.length} devices loaded from the server.`); }
@@ -40,18 +40,21 @@ function ServerPage() {
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 px-4 py-6 md:py-10">
       <div>
-        <Link to="/" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" /> Dashboard</Link>
+        {signedIn && <>
+          <Link to="/" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="size-4" /> Dashboard</Link>
+          </>
+        }
         <h1 className="mt-2 text-4xl font-bold tracking-tight">Home server</h1>
         <p className="readout mt-2 text-sm text-muted-foreground">Status: {signedIn ? `${status} · ${conn.username} (${conn.role})` : "not signed in"}</p>
       </div>
       <form className="panel flex flex-col gap-4 p-6" onSubmit={async (e) => {
         e.preventDefault();
         setBusy(true); setMsg("");
-        try { await login(url, username, password); setPassword(""); setMsg("Signed in."); }
+        try { await login(url, username, password); setPassword(""); setMsg("Signed in.");  navigate({ to: "/" });}
         catch (err) { setMsg(err instanceof TypeError ? "Can't reach the server. Check the address, that it is running, and that it allows this site (CORS)." : (err as Error).message); }
         finally { setBusy(false); }
       }}>
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2" style={{display: "none"}}>
           <Label htmlFor="srv-url">Server address</Label>
           <Input id="srv-url" value={url} onChange={(e) => setUrl(e.target.value)} onBlur={() => !signedIn && setConn({ url: normalizeUrl(url) })} placeholder="http://localhost:8001" />
         </div>

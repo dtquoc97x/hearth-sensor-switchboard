@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { hub, latestFor, useDeviceHub } from "@/hooks/use-device-hub";
 import { parseDevicePayloads, toUid, type DeviceUid } from "@/lib/iot";
-
+import { registerDevice, deleteDevice ,listDevices } from "@/lib/server-api";
 export const Route = createFileRoute("/devices")({
   head: () => ({
     meta: [
@@ -26,11 +26,41 @@ function DevicesPage() {
   const h = useDeviceHub();
   const [name, setName] = useState("");
   const [uid, setUid] = useState("");
-  const [raw, setRaw] = useState('{"Uid": 868225062598433, "Light level": 3, "Humidity": 15, "Temperature": 26},\n{"Uid": 868225062598432, "Temperature": 25, "Humidity": 15, "ts": "2026-11-17T10:00:00"}');
+  const [raw, setRaw] = useState("");
   const [err, setErr] = useState("");
   const [filter, setFilter] = useState<DeviceUid | "all">("all");
+  const [busy, setBusy] = useState(false);
   const nameOf = (u: DeviceUid) => h.devices.find((d) => d.uid === u)?.name ?? "Unknown device";
   const rows = filter === "all" ? h.log : h.log.filter((e) => e.Uid === filter);
+
+  const _addDevice = async (name: string, uid: DeviceUid) => {
+    setBusy(true);
+    try {
+      await registerDevice(uid, name);
+      hub.addDevice(name, uid);
+      const list = await listDevices();
+      hub.syncRemote(list.map((d) => ({ uid: d.uid, name: d.name })));
+      setErr("");
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const _deleteDevice = async (uid: DeviceUid) => {
+    setBusy(true);
+    try {
+      await deleteDevice(uid);
+      const list = await listDevices();
+      hub.syncRemote(list.map((d) => ({ uid: d.uid, name: d.name })));
+      setErr("");
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <main className="mx-auto flex min-h-screen max-w-7xl flex-col gap-6 px-4 py-6 md:px-8 md:py-10">
@@ -49,11 +79,12 @@ function DevicesPage() {
             if (!name.trim() || !uid.trim()) return setErr("Enter a name and a UID.");
             const n = toUid(uid);
             if (h.devices.some((d) => d.uid === n)) return setErr("A device with this UID already exists.");
-            hub.addDevice(name.trim(), n); setName(""); setUid(""); setErr("");
+            _addDevice(name.trim(), n);
+            setName(""); setUid("");
           }}>
             <div className="flex flex-1 flex-col gap-2"><Label htmlFor="n">Name</Label><Input id="n" value={name} onChange={(e) => setName(e.target.value)} placeholder="Bedroom node" /></div>
             <div className="flex flex-1 flex-col gap-2"><Label htmlFor="u">UID</Label><Input id="u" value={uid} onChange={(e) => setUid(e.target.value)} placeholder="868225062598432" /></div>
-            <Button type="submit"><Plus /> Add</Button>
+            <Button type="submit" disabled={busy}><Plus /> Add</Button>
           </form>
           {err && <p className="text-sm text-destructive">{err}</p>}
           <ul className="flex flex-col divide-y">
@@ -66,18 +97,17 @@ function DevicesPage() {
                     <p className="font-medium">{d.name}</p>
                     <p className="readout text-xs text-muted-foreground">UID {d.uid}</p>
                   </div>
-                  <p className="readout text-sm">{last ? Object.entries(last.values).map(([k, v]) => `${k} ${v}`).join(" · ") : "No data"}</p>
                   <label className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Switch checked={d.simulate} onCheckedChange={() => hub.toggleSimulate(d.id)} /> Simulate
                   </label>
-                  <Button size="icon" variant="ghost" aria-label={`Remove ${d.name}`} onClick={() => hub.removeDevice(d.id)}><Trash2 /></Button>
+                  <Button size="icon" variant="ghost" disabled={busy} aria-label={`Remove ${d.name}`} onClick={() => _deleteDevice(d.uid)}><Trash2 /></Button>
                 </li>
               );
             })}
           </ul>
         </section>
 
-        <section className="panel flex flex-col gap-3 p-6">
+        <section className="panel flex flex-col gap-3 p-6" style={{ display: "none" }}>
           <h2 className="text-lg font-semibold">Send test data</h2>
           <textarea value={raw} onChange={(e) => setRaw(e.target.value)} rows={6}
             className="readout rounded-md border bg-background p-3 text-sm" />

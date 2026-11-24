@@ -57,13 +57,11 @@ export const hub = {
   /** Add or rename devices registered on the home server; their data comes from the server, not simulation. */
   syncRemote: (list: { uid: DeviceUid; name: string }[]) =>
     set((h) => {
-      const devices = [...h.devices];
+      let devices : Device[] = [];
       for (const r of list) {
-        const i = devices.findIndex((d) => d.uid === r.uid);
-        if (i >= 0) devices[i] = { ...devices[i]!, name: r.name, remote: true, simulate: false };
-        else devices.push({ id: `d-${crypto.randomUUID().slice(0, 8)}`, name: r.name, uid: r.uid, simulate: false, remote: true });
+         devices.push({ id: `d-${crypto.randomUUID().slice(0, 8)}`, name: r.name, uid: r.uid, simulate: false, remote: true });
       }
-      return { ...h, devices };
+      return { ...h, devices : devices };
     }),
   clearLog: () => set((h) => ({ ...h, log: [] })),
 };

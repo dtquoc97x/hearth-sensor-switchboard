@@ -28,23 +28,27 @@ const sensor = (id: string, kind: SensorKind, name: string, room: string): Senso
 
 export function defaultModules(): Module[] {
   return [
-    { id: "fan-1", type: "fan", name: "Ceiling Fan", room: "Living room", hidden: false, relay: { on: false, auto: true, level: 2 }, threshold: 28 },
-    { id: "light-1", type: "light", name: "Main Light", room: "Living room", hidden: false, relay: { on: false, auto: false, level: 70 }, threshold: 150 },
-    sensor("s-temp", "temperature", "Temperature", "Living room"),
-    sensor("s-hum", "humidity", "Humidity", "Living room"),
-    sensor("s-co2", "co2", "CO₂", "Living room"),
-    sensor("s-pm", "pm25", "PM2.5", "Living room"),
-    sensor("s-lux", "lux", "Light level", "Living room"),
-    sensor("s-noise", "noise", "Noise", "Living room"),
-    sensor("s-pres", "pressure", "Pressure", "Outdoor"),
-    sensor("s-power", "power", "Energy", "Main meter"),
-    sensor("s-motion", "motion", "Motion", "Hallway"),
-    sensor("s-door", "door", "Front door", "Entrance"),
-    sensor("s-smoke", "smoke", "Smoke / Gas", "Kitchen"),
-    sensor("s-leak", "leak", "Water leak", "Bathroom"),
-    { id: "chart", type: "chart", hidden: false },
-    { id: "activity", type: "activity", hidden: false },
+    // { id: "fan-1", type: "fan", name: "Ceiling Fan", room: "Living room", hidden: false, relay: { on: false, auto: true, level: 2 }, threshold: 28 },
+    // { id: "light-1", type: "light", name: "Main Light", room: "Living room", hidden: false, relay: { on: false, auto: false, level: 70 }, threshold: 150 },
+    // sensor("s-temp", "temperature", "Temperature", "Living room"),
+    // sensor("s-hum", "humidity", "Humidity", "Living room"),
+    // sensor("s-co2", "co2", "CO₂", "Living room"),
+    // sensor("s-pm", "pm25", "PM2.5", "Living room"),
+    // sensor("s-lux", "lux", "Light level", "Living room"),
+    // sensor("s-noise", "noise", "Noise", "Living room"),
+    // sensor("s-pres", "pressure", "Pressure", "Outdoor"),
+    // sensor("s-power", "power", "Energy", "Main meter"),
+    // sensor("s-motion", "motion", "Motion", "Hallway"),
+    // sensor("s-door", "door", "Front door", "Entrance"),
+    // sensor("s-smoke", "smoke", "Smoke / Gas", "Kitchen"),
+    // sensor("s-leak", "leak", "Water leak", "Bathroom"),
+    // { id: "chart", type: "chart", hidden: false },
+    // { id: "activity", type: "activity", hidden: false },
   ];
+}
+
+export function moduleActivity(): Module {
+  return { id: "activity", type: "activity", hidden: false };
 }
 
 /** Small fixed per-device offset so several sensors of the same kind don't read identically. */
